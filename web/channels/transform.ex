@@ -27,14 +27,13 @@ defmodule Transform.Channels.Transform do
   end
 
   def handle_info({:transformed, chunk}, socket) do
-    Logger.info("Got chunk result! #{inspect chunk}")
-    Enum.each(chunk, fn row -> 
-      push(socket, "dataset:row", %{"row" => row})
-    end)
+    Logger.info("Got fully transformed chunk result! #{inspect chunk}")
+    push(socket, "dataset:chunk", %{"chunk" => chunk})
     {:noreply, socket}
   end
 
   def handle_info({:header, header}, socket) do
+    Logger.info("Got a header result #{inspect header}")
     push(socket, "dataset:header", %{"header" => header})
     {:noreply, socket}
   end

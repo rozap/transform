@@ -7,15 +7,10 @@ defmodule Transform do
     import Supervisor.Spec, warn: false
 
     children = [
-      # Start the endpoint when the application starts
-      supervisor(Transform.Endpoint, []),
-      # Start the Ecto repository
-      supervisor(Transform.Repo, []),
-      supervisor(Transform.Executor, []),
-      supervisor(Transform.BasicTableServer, []),
-
-      # Here you could define other workers and supervisors as children
-      # worker(Transform.Worker, [arg1, arg2, arg3]),
+      supervisor(Transform.Endpoint, []), # Phoenix's HTTP Listener.
+      supervisor(Transform.Repo, []), # Postgres connection.
+      supervisor(Transform.Executor, []), # Where we will run our transforms.
+      supervisor(Transform.BasicTableServer, []), # Creates basic table from chunks.
     ]
 
     # See http://elixir-lang.org/docs/stable/elixir/Supervisor.html

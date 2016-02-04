@@ -17,13 +17,17 @@ import {
 }
 from "phoenix"
 
+var $ = require('./jquery');
+
+import _ from 'web/static/js/underscore';
 
 let socket = new Socket("/socket", {
   params: {}
 })
-socket.connect()
 
 
+
+socket.connect();
 
 class Transformer {
   constructor() {
@@ -33,12 +37,28 @@ class Transformer {
       .receive("ok", this._onJoin.bind(this))
       .receive("error", this._onError.bind(this));
 
-    channel.on("dataset:row", payload => {
-      // console.log(payload)
+
+    var $b = $('table');
+    var counter = 0;
+    channel.on("dataset:chunk", ({chunk: chunk}) => {
+      counter++;
+
+      var toCols = (row) => {
+        return row.map((col) => `<td>${col}</td>`).join(' ');
+      }
+
+      chunk.forEach((row) => {
+        $b.append(`<tr>${toCols(row)}</tr>`);
+      });
+
     })
 
-    channel.on("dataset:header", header => {
-      console.log("got the header", header)
+    channel.on("dataset:header", ({header: {columns: columns}}) => {
+      var toHeaders = (cs) => {
+        return cs.map((col) => `<th>${col}</th>`).join(' ');
+      }
+      console.log("HEADER IS", columns)
+      $b.prepend(`<tr>${toHeaders(columns)}</tr>`);
     })
   }
 

@@ -6,7 +6,7 @@ defmodule Transform.Api.BasicTable do
 
   def init(args), do: args
 
-  def to_lines(bin) do
+  def parse_chunk(bin) do
     bin
     |> String.split("\n")
     |> Enum.map(fn row -> String.split(row, ",") end)
@@ -14,14 +14,11 @@ defmodule Transform.Api.BasicTable do
 
   def stream!(conn) do
     Stream.resource(
-      fn -> read_body(conn, read_length: 1000) end, 
-      fn 
-        {:done, conn}      -> 
-          {:halt, conn}
-        {:ok, bin, conn}   -> 
-          {to_lines(bin), {:done, conn}}
-        {:more, bin, conn} -> 
-          {to_lines(bin), read_body(conn, read_length: 1000)}
+      fn -> read_body(conn, read_length: 1000) end,
+      fn
+        {:done, conn}      -> {:halt, conn}
+        {:ok, bin, conn}   -> {[bin], {:done, conn}}
+        {:more, bin, conn} -> {[bin], read_body(conn, read_length: 1000)}
       end,
       fn conn -> conn end
     )
@@ -33,11 +30,17 @@ defmodule Transform.Api.BasicTable do
 
     upload = UUID.uuid4
 
-    conn
+    why = conn
     |> stream!
-    |> Stream.chunk(@chunk_size)
-    |> Stream.each(fn chunk -> 
-      # notify the basic table service of a new chunk on upload 
+    |> Stream.transform("", fn el, acc ->
+      [last | rest] = String.split(acc <> el, "\n")
+      |> Enum.reverse
+      {Enum.reverse(rest), acc <> last}
+    end)
+    |> CSV.decode
+    |> Stream.chunk(@chunk_size, @chunk_size, [])
+    |> Stream.each(fn chunk ->
+      # notify the basic table service of a new chunk on upload
       # for dataset_id
       BasicTableServer.push(dataset_id, upload, chunk)
     end)

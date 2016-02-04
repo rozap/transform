@@ -10,12 +10,13 @@ defmodule Transform.Executor do
   def init(args) do
     {:ok, %{
       transforms: %{},
+      headers: %{},
       listeners: %{}
     }}
   end
 
   def handle_call({:listen, dataset_id, pid}, _from, state) do
-    listeners = [pid | Dict.get(state.listeners, dataset_id, [])]
+    listeners = Enum.uniq([pid | Dict.get(state.listeners, dataset_id, [])])
     state = put_in(state, [:listeners, dataset_id], listeners)
     {:reply, :ok, state}
   end
@@ -24,7 +25,7 @@ defmodule Transform.Executor do
     state = put_in(state, [:transforms, dataset_id], pipeline)
 
     Logger.info("Picked up a new transform for #{dataset_id} #{inspect pipeline}")
-    BasicTableServer.listen(dataset_id, self)
+    BasicTableServer.listen(dataset_id)
 
     {:reply, :ok, state}
   end
@@ -36,21 +37,26 @@ defmodule Transform.Executor do
   end
 
   def handle_info({:header, dataset_id, header}, state) do
+    Logger.info("Executor got a header #{inspect header}")
+    state = put_in(state, [:headers, dataset_id], header)
     dispatch(state, dataset_id, {:header, header})
     {:noreply, state}
   end
 
   def handle_info({:chunk, dataset_id, chunk}, state) do
-    Logger.info("Executor to handle chunk for #{dataset_id}")
-    
-    transformed = Enum.map(chunk, fn row -> 
+
+    header = get_in(state, [:headers, dataset_id])
+    Logger.info("Executor to handle chunk for #{dataset_id} :: #{inspect header}")
+
+    {transformed, errors} = Enum.map(chunk, fn row ->
       state.transforms[dataset_id]
-      |> Enum.reduce(row, fn func, intermediary ->
-        func.(intermediary)
+      |> Enum.reduce({:ok, row}, fn
+        func, {:ok, row}   -> func.(header, row)
+        _, {:error, _} = e -> e
       end)
     end)
 
-    dispatch(state, dataset_id, {:transformed, transformed})
+    dispatch(state, dataset_id, {:transformed, transformed, errors: errors})
 
     {:noreply, state}
   end

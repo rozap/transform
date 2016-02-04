@@ -40,14 +40,14 @@ class Transformer {
 
     var $b = $('table');
     var counter = 0;
-    channel.on("dataset:chunk", ({chunk: chunk}) => {
+    channel.on("dataset:chunk", ({transformed: transformed, errors: errors}) => {
       counter++;
 
       var toCols = (row) => {
         return row.map((col) => `<td>${col}</td>`).join(' ');
       }
 
-      chunk.forEach((row) => {
+      transformed.forEach((row) => {
         $b.append(`<tr>${toCols(row)}</tr>`);
       });
 

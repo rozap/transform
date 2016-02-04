@@ -2,7 +2,7 @@ defmodule Transform.Api.BasicTable do
   import Plug.Conn
   alias Transform.BasicTableServer
 
-  @chunk_size 4
+  @chunk_size 64
 
   def init(args), do: args
 

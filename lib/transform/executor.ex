@@ -44,19 +44,31 @@ defmodule Transform.Executor do
   end
 
   def handle_info({:chunk, dataset_id, chunk}, state) do
-
     header = get_in(state, [:headers, dataset_id])
-    Logger.info("Executor to handle chunk for #{dataset_id} :: #{inspect header}")
 
-    {transformed, errors} = Enum.map(chunk, fn row ->
+    result = Enum.map(chunk, fn row ->
+
       state.transforms[dataset_id]
       |> Enum.reduce({:ok, row}, fn
         func, {:ok, row}   -> func.(header, row)
         _, {:error, _} = e -> e
       end)
     end)
+    |> Enum.group_by(fn
+      {:ok, _} -> :transformed
+      {:error, _} -> :errors
+    end)
 
-    dispatch(state, dataset_id, {:transformed, transformed, errors: errors})
+    successes = Dict.get(result, :transformed, [])
+    errors = Dict.get(result, :errors, [])
+
+    transformed = Enum.map(successes, fn {ok, row} -> row end)
+    errors      = Enum.map(errors, fn {:error, err} -> err end)
+
+    dispatch(state, dataset_id, {:transformed, %{
+      errors: errors,
+      transformed: transformed
+    }})
 
     {:noreply, state}
   end

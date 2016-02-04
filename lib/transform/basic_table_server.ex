@@ -38,10 +38,7 @@ defmodule Transform.BasicTableServer do
         [header | rest] = chunk
         bt = %BasicTable{columns: header}
 
-        Enum.each(pids, fn pid ->
-          Logger.info("Notify #{dataset_id} of #{length chunk} rows for #{upload}")
-          send pid, {:header, dataset_id, bt}
-        end)
+        Enum.each(pids, fn pid -> send pid, {:header, dataset_id, bt} end)
 
         cache = File.open!("/tmp/#{upload}.csv", [:append])
         write!(cache, header)
@@ -56,13 +53,10 @@ defmodule Transform.BasicTableServer do
     end
 
     {cache, basic_table} = get_in(state, [:uploads, dataset_id, upload])
-    Enum.each(chunk, fn row -> write!(cache, row) end)
 
+    # Enum.each(chunk, fn row -> write!(cache, row) end)
 
-    Enum.each(pids, fn pid ->
-      Logger.info("Notify #{dataset_id} of #{length chunk} rows for #{upload}")
-      send pid, {:chunk, dataset_id, chunk}
-    end)
+    Enum.each(pids, fn pid -> send pid, {:chunk, dataset_id, chunk} end)
 
     {:noreply, state}
   end

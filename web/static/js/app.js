@@ -32,7 +32,7 @@ socket.connect();
 class Transformer {
   constructor() {
     // Now that you are connected, you can join channels with a topic:
-    let channel = socket.channel("transform:ffff-ffff", {})
+    let channel = socket.channel(`transform:${datasetId}`, {})
     channel.join()
       .receive("ok", this._onJoin.bind(this))
       .receive("error", this._onError.bind(this));
@@ -72,4 +72,4 @@ class Transformer {
 }
 
 
-new Transformer()
+$(() => {new Transformer()});

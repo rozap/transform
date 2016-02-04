@@ -1,1 +1,8 @@
+<h1>Transforminating dataset <%= @id %></h1>
+
+<script type="text/javascript">
+  var datasetId = "<%= @id %>";
+</script>
+<script src="<%= static_path(@conn, "/js/app.js") %>"></script>
+
 <table></table>

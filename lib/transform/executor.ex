@@ -2,6 +2,7 @@ defmodule Transform.Executor do
   use GenServer
   require Logger
   alias Transform.BasicTableServer
+  alias Transform.Interpreter
 
   def start_link do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -48,11 +49,17 @@ defmodule Transform.Executor do
 
     result = Enum.map(chunk, fn row ->
 
-      state.transforms[dataset_id]
-      |> Enum.reduce({:ok, row}, fn
-        func, {:ok, row}   -> func.(header, row)
-        _, {:error, _} = e -> e
-      end)
+      pipeline = state.transforms[dataset_id]
+      ast = Interpreter.to_ast(pipeline, {header, row})
+
+      unquote(ast)
+
+      {:error, :foo}
+      # state.transforms[dataset_id]
+      # |> Enum.reduce({:ok, header, row}, fn
+      #   func, {:ok, header, row} -> func.().(header, row)
+      #   _, {:error, _} = e -> e
+      # end)
     end)
     |> Enum.group_by(fn
       {:ok, _} -> :transformed

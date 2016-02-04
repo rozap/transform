@@ -4,6 +4,11 @@ defmodule TestHelpers do
   def fixture!(name) do
     File.stream!("#{__DIR__}/fixtures/#{name}", [:read], :line)
   end
+
+  def read!(name) do
+    File.read!("#{__DIR__}/fixtures/#{name}")
+  end
+
 end
 
 Mix.Task.run "ecto.create", ~w(-r Transform.Repo --quiet)

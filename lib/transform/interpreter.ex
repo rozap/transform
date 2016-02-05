@@ -1,8 +1,8 @@
 defmodule Transform.Interpreter do
-  
+
   def to_ast([func, meta, args], transformable) do
     func_name = String.to_atom(func)
-    
+
     {{:., [], [
       {:__aliases__, [alias: false], [Transform.Interpreter.Ops]},
       func_name
@@ -18,3 +18,5 @@ defmodule Transform.Interpreter do
 
 
 end
+
+

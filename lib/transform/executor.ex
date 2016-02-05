@@ -49,17 +49,13 @@ defmodule Transform.Executor do
 
     result = Enum.map(chunk, fn row ->
 
+      quoted_header = quote do: header
       pipeline = state.transforms[dataset_id]
-      ast = Interpreter.to_ast(pipeline, {header, row})
+      case Code.eval_quoted(Interpreter.to_ast(pipeline, {:ok, {quoted_header, row}})) do
+        {:ok, {header, row}} -> {:ok, row}
+        {:error, _} = e -> e
+      end
 
-      unquote(ast)
-
-      {:error, :foo}
-      # state.transforms[dataset_id]
-      # |> Enum.reduce({:ok, header, row}, fn
-      #   func, {:ok, header, row} -> func.().(header, row)
-      #   _, {:error, _} = e -> e
-      # end)
     end)
     |> Enum.group_by(fn
       {:ok, _} -> :transformed

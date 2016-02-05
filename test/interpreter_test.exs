@@ -14,17 +14,19 @@ defmodule InterpreterTest do
     header = %BasicTable{columns: ["a", "b", "c"]}
     send Executor, {:header, "ff", header}
 
+    Executor.listen("ff")
     Executor.transform("ff", pipeline)
 
     send Executor, {:chunk, "ff", [
       ["a_val", "b_val", "c_val"]
     ]}
 
+
     receive do
-      _ -> :ok
-    after 10 -> :ok
+      message -> IO.inspect message
+    after 20 -> raise ArgumentError, message: "never received chunk response"
     end
-    
+
     IO.puts "Done..."
   end
 end

@@ -2,19 +2,26 @@ defmodule Transform.Interpreter.Ops do
 
   alias Transform.BasicTableServer.BasicTable
 
-  def concat({:ok, {header, row}}, n0, n1, n2) do
-    IO.inspect header
-    IO.inspect row
 
+  def concat({header, row}, n0, n1, n2) do
     {:ok, {header, row}}
   end
 
+  # defmacro concat do
+  #   quote do
+  #     IO.inspect header
 
-  def parse_datetime({:ok, {header, row}}) do
-    {:ok, header, row}
+  #     {:ok, :ok}
+  #   end
+  # end
+
+
+
+  def parse_datetime() do
+    {:ok, :ok}
   end
 
-  def rename({:ok, {header, row}}) do
-    {:ok, header, row}
+  def rename() do
+    {:ok, :ok}
   end
 end

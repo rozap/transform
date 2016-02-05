@@ -1,18 +1,5 @@
 [
-  "rename",
+  "concat",
   [],
-  [
-    "datetime",
-    [
-      "parse_datetime",
-      [],
-      [
-        [
-          "concat",
-          [],
-          ["date_col", " ", "time_col"]
-        ]
-      ]
-    ]
-  ]
+  ["date_col", " ", "time_col"]
 ]

@@ -16,6 +16,13 @@ defmodule Transform.Executor do
     }}
   end
 
+
+  def dispatch(state, dataset_id, payload) do
+    state.listeners
+    |> Dict.get(dataset_id, [])
+    |> Enum.each(fn listener -> send listener, payload end)
+  end
+
   def handle_call({:listen, dataset_id, pid}, _from, state) do
     listeners = Enum.uniq([pid | Dict.get(state.listeners, dataset_id, [])])
     state = put_in(state, [:listeners, dataset_id], listeners)
@@ -23,19 +30,16 @@ defmodule Transform.Executor do
   end
 
   def handle_call({:transform, dataset_id, pipeline}, _from, state) do
-    state = put_in(state, [:transforms, dataset_id], pipeline)
+    {func, _} = Code.eval_quoted(Interpreter.to_ast(pipeline), [], __ENV__)
 
-    Logger.info("Picked up a new transform for #{dataset_id} #{inspect pipeline}")
+    state = put_in(state, [:transforms, dataset_id], func)
+
+    Logger.info("Picked up a new transform for #{dataset_id}")
     BasicTableServer.listen(dataset_id)
 
     {:reply, :ok, state}
   end
 
-  def dispatch(state, dataset_id, payload) do
-    state.listeners
-    |> Dict.get(dataset_id, [])
-    |> Enum.each(fn listener -> send listener, payload end)
-  end
 
   def handle_info({:header, dataset_id, header}, state) do
     Logger.info("Executor got a header #{inspect header}")
@@ -49,9 +53,9 @@ defmodule Transform.Executor do
 
     result = Enum.map(chunk, fn row ->
 
-      quoted_header = quote do: header
-      pipeline = state.transforms[dataset_id]
-      case Code.eval_quoted(Interpreter.to_ast(pipeline, {:ok, {quoted_header, row}})) do
+      func = state.transforms[dataset_id]
+
+      case func.({header, row}) do
         {:ok, {header, row}} -> {:ok, row}
         {:error, _} = e -> e
       end

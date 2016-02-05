@@ -11,14 +11,16 @@ defmodule InterpreterTest do
     pipeline = read!("interpreter/concat.json")
     |> Poison.decode!
 
-    header = %BasicTable{columns: ["a", "b", "c"]}
+    header = %BasicTable{columns: ["name", "date_col", "time_col"]}
     send Executor, {:header, "ff", header}
 
     Executor.listen("ff")
     Executor.transform("ff", pipeline)
 
     send Executor, {:chunk, "ff", [
-      ["a_val", "b_val", "c_val"]
+      ["some name", "2016-02-03", "7:27:29"],
+      ["another name", "2016-02-04", "9:27:29"]
+
     ]}
 
 

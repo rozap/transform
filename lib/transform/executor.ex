@@ -30,7 +30,9 @@ defmodule Transform.Executor do
   end
 
   def handle_call({:transform, dataset_id, pipeline}, _from, state) do
-    {func, _} = Code.eval_quoted(Interpreter.to_ast(pipeline), [], __ENV__)
+    quoted = Interpreter.wrap(pipeline)
+    IO.puts "Code gen\n\n #{Macro.to_string(quoted)}\n\n"
+    {func, _} = Code.eval_quoted(quoted, [], __ENV__)
 
     state = put_in(state, [:transforms, dataset_id], func)
 
@@ -55,8 +57,11 @@ defmodule Transform.Executor do
 
       func = state.transforms[dataset_id]
 
-      case func.({header, row}) do
-        {:ok, {header, row}} -> {:ok, row}
+      datum = Enum.zip(header.columns, row) |> Enum.into(%{})
+
+      case func.({:ok, datum}) do
+        {:ok, transformed_datum} ->
+          {:ok, transformed_datum}
         {:error, _} = e -> e
       end
 

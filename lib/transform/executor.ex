@@ -42,7 +42,6 @@ defmodule Transform.Executor do
     {:reply, :ok, state}
   end
 
-
   def handle_info({:header, dataset_id, header}, state) do
     Logger.info("Executor got a header #{inspect header}")
     state = put_in(state, [:headers, dataset_id], header)
@@ -60,8 +59,7 @@ defmodule Transform.Executor do
       datum = Enum.zip(header.columns, row) |> Enum.into(%{})
 
       case func.({:ok, datum}) do
-        {:ok, transformed_datum} ->
-          {:ok, transformed_datum}
+        {:ok, transformed_datum} -> {:ok, transformed_datum}
         {:error, _} = e -> e
       end
 

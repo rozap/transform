@@ -4,9 +4,6 @@ defmodule Transform.Interpreter.Ops do
 
 
   def concat({:ok, datum}, c0, sep, c1, new_name) do
-
-    IO.puts "Concat #{c0} #{c1} #{inspect datum}"
-
     v0 = Dict.get(datum, c0)
     v1 = Dict.get(datum, c1)
 

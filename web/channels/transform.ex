@@ -5,7 +5,7 @@ defmodule Transform.Channels.Transform do
 
   def join("transform:" <> dataset_id, _message, socket) do
     Logger.info("Joining transform #{dataset_id}")
-    assign(socket, :dataset_id, dataset_id)
+    socket = assign(socket, :dataset_id, dataset_id)
 
     Executor.transform(dataset_id, [])
     Executor.listen(dataset_id)
@@ -14,13 +14,14 @@ defmodule Transform.Channels.Transform do
   end
 
 
-  defp to_pipeline(transforms) do
-    []
+  def handle_in("transform", %{"transforms" => transforms}, socket) do
+    IO.puts "Adding transforms #{inspect transforms}"
+    Executor.transform(socket.assigns.dataset_id, transforms)
+    {:reply, :ok, socket}
   end
 
-  def handle_in("transform", %{"transforms" => transforms}, socket) do
-    pipeline = to_pipeline(transforms)
-    Executor.transform(socket.assign.dataset_id, pipeline)
+  def handle_in(what, why, socket) do
+    IO.puts "what #{what} #{inspect why}"
     {:reply, :ok, socket}
   end
 

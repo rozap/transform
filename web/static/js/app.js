@@ -40,26 +40,41 @@ class Transformer {
 
     var $b = $('table');
     var counter = 0;
+    var columns;
     channel.on("dataset:chunk", ({transformed: transformed, errors: errors}) => {
-      counter++;
+      if(counter === 0) {
+        var [row] = transformed;
+        columns = Object.keys(row);
+        console.log(columns)
 
-      var toCols = (row) => {
-        return row.map((col) => `<td>${col}</td>`).join(' ');
+        var toHeaders = (cs) => {
+          return cs.map((col) => `<th>${col}</th>`).join(' ');
+        }
+        $b.prepend(`<tr>${toHeaders(columns)}</tr>`);
       }
 
-      transformed.forEach((row) => {
-        $b.append(`<tr>${toCols(row)}</tr>`);
+      counter++;
+
+      var toCols = (r) => {
+        return columns.map((col) => `<td>${r[col]}</td>`).join(' ');
+      }
+
+      transformed.forEach((r) => {
+        $b.append(`<tr>${toCols(r)}</tr>`);
       });
 
     })
 
-    channel.on("dataset:header", ({header: {columns: columns}}) => {
-      var toHeaders = (cs) => {
-        return cs.map((col) => `<th>${col}</th>`).join(' ');
+    $('#do-the-thing').on('click', () => {
+      var text = $('textarea').val();
+      var ts = []
+      try {
+        ts = JSON.parse(text)
+      } catch(e) {
+        //ok
       }
-      console.log("HEADER IS", columns)
-      $b.prepend(`<tr>${toHeaders(columns)}</tr>`);
-    })
+      channel.push("transform", {transforms: ts});
+    });
   }
 
   _onJoin(resp) {

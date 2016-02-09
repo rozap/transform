@@ -5,6 +5,29 @@ defmodule InterpreterTest do
   alias Transform.Executor
   alias Transform.BasicTableServer.BasicTable
 
+  test "can interpret a single function" do
+    [
+      "rename",
+      [],
+      [
+        [
+          "parse_datetime",
+          [],
+          [
+            [
+              "concat",
+              [],
+              ["__DATUM__", "date_col", " ", "time_col", "datetime"]
+            ],
+            "datetime"
+          ]
+        ],
+        "datetime",
+        "sometime"
+      ]
+    ]
+  end
+
 
   test "can interpret a basic thing" do
 
@@ -23,12 +46,18 @@ defmodule InterpreterTest do
 
     ]}
 
-
     receive do
-      message -> IO.inspect message
-    after 20 -> raise ArgumentError, message: "never received chunk response"
+      {:transformed, result} ->
+        assert result ==  %{
+          errors: [],
+          transformed: [
+            %{"name" => "another name", "sometime" => "2016-02-04 9:27:29"},
+            %{"name" => "some name", "sometime" => "2016-02-03 7:27:29"}
+          ]
+        }
+    after 20 ->
+      raise ArgumentError, message: "never received chunk response"
     end
 
-    IO.puts "Done..."
   end
 end

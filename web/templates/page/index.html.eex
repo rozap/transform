@@ -5,4 +5,7 @@
 </script>
 <script src="<%= static_path(@conn, "/js/app.js") %>"></script>
 
+
+<textarea rows="20" cols="120" id="transform"></textarea>
+<a href="javascript:void(0)" id="do-the-thing">Do the thing</a>
 <table></table>

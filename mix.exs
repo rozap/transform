@@ -38,7 +38,9 @@ defmodule Transform.Mixfile do
      {:gettext, "~> 0.9"},
      {:cowboy, "~> 1.0"},
      {:uuid, "~> 1.1"},
-     {:csv, "~> 1.2.3"}
+     {:csv, "~> 1.2.3"},
+     {:poolboy, "~> 1.5"},
+     {:calendar, "~> 0.12.4"}
    ]
   end
 

@@ -1,6 +1,7 @@
 defmodule Transform.Api.BasicTable do
   import Plug.Conn
-  alias Transform.BasicTableServer
+  alias Transform.Repo
+
 
   @chunk_size 64
 
@@ -24,29 +25,44 @@ defmodule Transform.Api.BasicTable do
     )
   end
 
+
   def call(conn, args) do
 
     dataset_id = conn.params["dataset_id"]
 
-    upload = UUID.uuid4
+    case Repo.insert(%Transform.Upload{dataset: dataset_id}) do
+      {:ok, upload} ->
+        conn
+        |> stream!
+        |> Stream.transform("", fn el, acc ->
+          tok = String.split(acc <> el, "\n")
+          last = List.last(tok)
 
-    why = conn
-    |> stream!
-    |> Stream.transform("", fn el, acc ->
-      [last | rest] = String.split(acc <> el, "\n")
-      |> Enum.reverse
-      {Enum.reverse(rest), acc <> last}
-    end)
-    |> CSV.decode
-    |> Stream.chunk(@chunk_size, @chunk_size, [])
-    |> Stream.each(fn chunk ->
-      # notify the basic table service of a new chunk on upload
-      # for dataset_id
-      BasicTableServer.push(dataset_id, upload, chunk)
-    end)
-    |> Stream.run
+          {Enum.take(tok, length(tok) - 1), acc <> last}
+        end)
+        |> CSV.decode
+        |> Stream.chunk(@chunk_size, @chunk_size, [])
+        |> Stream.transform(nil,
+          fn [columns | rows], nil ->
+              case Repo.insert(%Transform.BasicTable{meta: %{columns: columns}, upload_id: upload.id}) do
+                {:ok, bt} ->
+                  Transform.BasicTable.Worker.push(dataset_id, bt, rows)
+                  {[], bt}
+                {:error, reason} -> {:halt, reason}
+              end
+            chunk, basic_table ->
+              Transform.BasicTable.Worker.push(dataset_id, basic_table, chunk)
+              {[], basic_table}
+          end)
+        |> Stream.run
 
-    send_resp(conn, 200, "neat thanks\n")
+        send_resp(conn, 200, "neat thanks\n")
+
+      {:error, reason} ->
+        send_resp(conn, 400, "something went wrong #{reason}")
+    end
+
+
   end
 
 end

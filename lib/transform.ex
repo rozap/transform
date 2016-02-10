@@ -6,11 +6,15 @@ defmodule Transform do
   def start(_type, _args) do
     import Supervisor.Spec, warn: false
 
+
+
     children = [
       supervisor(Transform.Endpoint, []), # Phoenix's HTTP Listener.
       supervisor(Transform.Repo, []), # Postgres connection.
-      supervisor(Transform.Executor, []), # Where we will run our transforms.
-      supervisor(Transform.BasicTableServer, []), # Creates basic table from chunks.
+      worker(Transform.ExecutorSupervisor, []), # Where we will run our transforms.
+      supervisor(Transform.BasicTableSupervisor, []), # Creates basic table from chunks.
+      supervisor(Transform.Compiler, []), # Takes an AST and transforms it into a function
+      supervisor(Transform.Herder, [])
     ]
 
     # See http://elixir-lang.org/docs/stable/elixir/Supervisor.html

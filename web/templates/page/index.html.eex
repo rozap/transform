@@ -1,11 +1,17 @@
-<h1>Transforminating dataset <%= @id %></h1>
-
 <script type="text/javascript">
   var datasetId = "<%= @id %>";
 </script>
 <script src="<%= static_path(@conn, "/js/app.js") %>"></script>
 
-
-<textarea rows="20" cols="120" id="transform"></textarea>
-<a href="javascript:void(0)" id="do-the-thing">Do the thing</a>
-<table></table>
+<div class="pure-g">
+  <div class="pure-u-1-3">
+    <textarea id="transform"></textarea>
+    <a href="javascript:void(0)" id="do-the-thing">Do the thing</a>
+  </div>
+  <div class="pure-u-1-3" id="errors"></div>
+  <div class="pure-u-1-3" id="upload"></div>
+</div>
+<div id="results">
+  <table id="histograms"></table>
+  <table id="results"></table>
+</div>

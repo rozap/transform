@@ -34,7 +34,7 @@ defmodule Transform.BasicTable.Worker do
   end
 
 
-  def handle_call({:push, dataset_id, basic_table, {sequence_number, chunk}}, _, state) do
+  def handle_cast({:push, dataset_id, basic_table, {sequence_number, chunk}}, state) do
     # %BasicTable{columns: columns, upload: upload_id} = basic_table
 
     ## Write to persistent store
@@ -53,13 +53,13 @@ defmodule Transform.BasicTable.Worker do
     end
 
 
-    {:reply, :ok, state}
+    {:noreply, state}
   end
 
   def push(dataset_id, basic_table, chunk) do
     case Enum.take_random(:pg2.get_members(__MODULE__), 1) do
       [] -> raise ArgumentError, message: "No members of pg2 group #{inspect __MODULE__}"
-      [someone] -> GenServer.call(someone, {:push, dataset_id, basic_table, chunk})
+      [someone] -> GenServer.cast(someone, {:push, dataset_id, basic_table, chunk})
     end
   end
 end

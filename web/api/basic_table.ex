@@ -3,7 +3,7 @@ defmodule Transform.Api.BasicTable do
   alias Transform.Repo
 
 
-  @chunk_size 1024
+  @chunk_size 512
 
   def init(args), do: args
 

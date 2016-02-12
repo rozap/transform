@@ -11,7 +11,7 @@ defmodule Transform.ExecutorSupervisor do
   def init(_) do
     :pg2.create(Transform.Executor.Worker)
 
-    children = Enum.map(1..8, fn i ->
+    children = Enum.map(1..32, fn i ->
       id = String.to_atom("executor_worker_#{i}")
       worker(Transform.Executor.Worker, [[id: id]], id: id)
     end)

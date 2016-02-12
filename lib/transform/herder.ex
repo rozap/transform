@@ -2,11 +2,10 @@ defmodule Transform.Herder do
   require Logger
   use GenServer
   alias Transform.Repo
-  alias Transform.TransformResult
   alias Transform.Chunk
   import Ecto.Query
 
-  @timeout 10 # Chunks orphaned for N seconds get retried
+  @timeout 4 # Chunks orphaned for N seconds get retried
   @max_attempts 4
 
   def start_link do
@@ -24,17 +23,13 @@ defmodule Transform.Herder do
     cutoff = Calendar.DateTime.now_utc
     |> Calendar.DateTime.advance!(@timeout)
 
-    completed_set = Repo.all(
-      from tr in TransformResult,
-      select: tr.chunk_id
-    )
 
     orphaned_set = Repo.all(
       from c in Chunk,
       where:
         c.inserted_at < ^cutoff and
         c.attempt_number < @max_attempts and
-        not (c.id in ^completed_set),
+        is_nil(c.completed_at),
       select: c
     )
 

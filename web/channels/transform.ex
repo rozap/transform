@@ -5,7 +5,7 @@ defmodule Transform.Channels.Transform do
   alias Transform.Channels.Transform.Aggregator
 
   # Never show more than N rows to the user
-  @threshold 512
+  @threshold 2048
 
   def join("transform:" <> dataset_id, _message, socket) do
     Logger.info("Joining transform #{dataset_id}")
@@ -17,7 +17,9 @@ defmodule Transform.Channels.Transform do
 
     {:ok, ag_pid} = GenServer.start_link(Aggregator, [])
 
-    socket = assign(socket, :aggregator, ag_pid)
+    socket = socket
+    |> assign(:aggregator, ag_pid)
+    |> assign(:seen, 0)
 
     {:ok, socket}
   end
@@ -28,16 +30,7 @@ defmodule Transform.Channels.Transform do
     {:reply, :ok, socket}
   end
 
-
-  def handle_info({:transformed, basic_table, result}, socket) do
-    upload = basic_table.upload
-    current = Dict.get(socket.assigns, upload, 0)
-    socket = assign(socket, upload, current + length(result.transformed))
-    seen = Dict.get(socket.assigns, upload)
-    if seen < @threshold do
-      push(socket, "dataset:transform", %{result: result.transformed})
-    end
-
+  defp push_result(socket, result) do
     case result.errors do
       [] -> :ok
       errors ->
@@ -45,10 +38,31 @@ defmodule Transform.Channels.Transform do
         push(socket, "dataset:errors", %{result: result.errors})
     end
 
-
-    Aggregator.push(socket.assigns.aggregator, socket, result.transformed)
+    Aggregator.push(socket.assigns.aggregator, socket, result.aggregate)
 
     {:noreply, socket}
+
+  end
+
+  defp push_progress(socket, result) do
+    chunk_size = Transform.Api.BasicTable.chunk_size
+    push(socket, "dataset:progress", %{rows: result.chunk.sequence_number * chunk_size})
+  end
+
+  def handle_info({:transformed, basic_table, result}, %{assigns: %{seen: seen}} = socket) when seen < @threshold do
+    socket = assign(socket, :seen, seen + length(result.transformed))
+
+    push(socket, "dataset:transform", %{result: result.transformed})
+    push_progress(socket, result)
+    push_result(socket, result)
+  end
+
+
+  def handle_info({:transformed, basic_table, result}, socket) do
+    seen = socket.assigns.seen
+    socket = assign(socket, :seen, seen + length(result.transformed))
+    push_progress(socket, result)
+    push_result(socket, result)
   end
 
 end

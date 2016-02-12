@@ -5,7 +5,7 @@ defmodule Transform.Executor.Worker do
   alias Transform.Interpreter
   alias Transform.Compiler
   alias Transform.Repo
-  alias Transform.TransformResult
+  alias Transform.Chunk
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args)
@@ -44,6 +44,25 @@ defmodule Transform.Executor.Worker do
     end
   end
 
+  def aggregate(transformed) do
+    Enum.reduce(transformed, %{}, fn row, acc ->
+      Enum.reduce(row, acc, fn {colname, value}, acc ->
+        path = [colname, value]
+        acc = case acc[colname] do
+          nil -> put_in(acc, [colname], %{})
+          _ -> acc
+        end
+        acc = case acc[colname][value] do
+          nil -> put_in(acc, path, 0)
+          _ -> acc
+        end
+
+        current = get_in(acc, path)
+        put_in(acc, path, current + 1)
+      end)
+    end)
+  end
+
 
   def handle_cast({:chunk, dataset_id, basic_table, chunk}, state) do
     rows = read_from_store(chunk)
@@ -73,12 +92,15 @@ defmodule Transform.Executor.Worker do
 
     dispatch(dataset_id, {:transformed, basic_table, %{
       errors: errors,
-      transformed: transformed
+      transformed: transformed,
+      aggregate: aggregate(transformed),
+      chunk: chunk
     }})
 
-    Repo.insert(%TransformResult{
-      chunk_id: chunk.id
+    cset = Chunk.changeset(chunk, %{
+      completed_at: Ecto.DateTime.utc
     })
+    Repo.update(cset)
 
     {:noreply, state}
   end

@@ -38,9 +38,10 @@ function chart(el, width, height) {
           name: key,
           frequency: count
         };
-      }).sort((a, b) => a.name < b.name ? -1 : 1);
+      }).sort((a, b) => a.frequency < b.frequency ? -1 : 1);
 
       data = data.slice(0, 50)
+      data = data.sort((a, b) => a.name < b.name? -1 : 1);
       x.domain(data.map(function(d) {
         return d.name;
       }));

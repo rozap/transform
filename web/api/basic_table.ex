@@ -3,9 +3,11 @@ defmodule Transform.Api.BasicTable do
   alias Transform.Repo
 
 
-  @chunk_size 64
+  @chunk_size 1024
 
   def init(args), do: args
+
+  def chunk_size, do: @chunk_size
 
   def parse_chunk(bin) do
     bin
@@ -46,13 +48,13 @@ defmodule Transform.Api.BasicTable do
           fn [columns | rows], nil ->
               case Repo.insert(%Transform.BasicTable{meta: %{columns: columns}, upload_id: upload.id}) do
                 {:ok, bt} ->
-                  Transform.BasicTable.Worker.push(dataset_id, bt, rows)
-                  {[], bt}
+                  Transform.BasicTable.Worker.push(dataset_id, bt, {0, rows})
+                  {[], {bt, 1}}
                 {:error, reason} -> {:halt, reason}
               end
-            chunk, basic_table ->
-              Transform.BasicTable.Worker.push(dataset_id, basic_table, chunk)
-              {[], basic_table}
+            chunk, {basic_table, chunk_num} ->
+              Transform.BasicTable.Worker.push(dataset_id, basic_table, {chunk_num, chunk})
+              {[], {basic_table, chunk_num + 1}}
           end)
         |> Stream.run
 

@@ -30,11 +30,16 @@ textarea {
 .errors {
   list-style: none;
   padding:4px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 .errors li {
   padding: 4px;
-  color: red;
+  color: #434343;
+  border-left: 4px solid red;
+  margin: 2px 0px;
 }
+
 
 .bar {
   fill: steelblue;

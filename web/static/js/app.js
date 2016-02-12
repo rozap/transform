@@ -89,6 +89,24 @@ class Histogram {
   }
 }
 
+class ProgressView {
+  constructor(channel) {
+    this.$el = $('#progress')
+    channel.on("dataset:progress", this.update.bind(this));
+  }
+
+  update({rows: rows}) {
+    this._count = rows;
+    this.render();
+  }
+
+  render() {
+    this.$el.html(`
+      Processed ${this._count} rows
+    `)
+  }
+}
+
 class ErrorsView {
   constructor(channel) {
     this.$el = $('#errors')
@@ -127,7 +145,7 @@ class TableView {
     var widths = this.$table.find('th').map((i, e) => $(e).width());
     _.zip(this._columns, widths).forEach(([col, width]) => {
       var values = agg[col];
-      this._histograms[col].update(values, width)
+      if(this._histograms[col]) this._histograms[col].update(values, width)
     });
 
   }
@@ -183,6 +201,7 @@ class Transformer {
     var channelView = new TableView(this.channel);
     var uploadView = new UploadView(this.channel, fourfour);
     var errorsView = new ErrorsView(this.channel);
+    var progressView = new ProgressView(this.channel);
 
     $('#do-the-thing').on('click', () => {
       var text = $('textarea').val();

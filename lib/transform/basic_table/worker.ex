@@ -30,12 +30,11 @@ defmodule Transform.BasicTable.Worker do
     |> Enum.each(fn line -> IO.binwrite(device, line) end)
 
     File.close(device)
-
     path
   end
 
 
-  def handle_cast({:push, dataset_id, basic_table, chunk}, state) do
+  def handle_call({:push, dataset_id, basic_table, {sequence_number, chunk}}, _, state) do
     # %BasicTable{columns: columns, upload: upload_id} = basic_table
 
     ## Write to persistent store
@@ -44,6 +43,7 @@ defmodule Transform.BasicTable.Worker do
 
     case Repo.insert(%Chunk{
       basic_table_id: basic_table.id,
+      sequence_number: sequence_number,
       location: location
     }) do
       {:ok, entry} ->
@@ -53,13 +53,13 @@ defmodule Transform.BasicTable.Worker do
     end
 
 
-    {:noreply, state}
+    {:reply, :ok, state}
   end
 
   def push(dataset_id, basic_table, chunk) do
     case Enum.take_random(:pg2.get_members(__MODULE__), 1) do
       [] -> raise ArgumentError, message: "No members of pg2 group #{inspect __MODULE__}"
-      [someone] -> GenServer.cast(someone, {:push, dataset_id, basic_table, chunk})
+      [someone] -> GenServer.call(someone, {:push, dataset_id, basic_table, chunk})
     end
   end
 end

@@ -18,12 +18,10 @@ defmodule Transform.Repo.Migrations.CreateChunkLog do
       add :location, :string
       add :sequence_number, :integer
       add :attempt_number, :integer, default: 0
+      add :completed_at, :datetime
+      add :completed_location, :string
       timestamps
     end
 
-    create table(:transform_results) do
-      add :chunk_id, references(:chunks)
-      timestamps
-    end
   end
 end

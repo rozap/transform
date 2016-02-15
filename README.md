@@ -12,3 +12,10 @@ Becuase of dockerization/mesos/marathon, we'll need to use zk to manage dynamic 
 
 To end the erlang app gracefully and facilitate the removal of the node from zk, don't ctrl+c out of the repl, use `:init.stop` to allow processes to perform cleanup on exit
 
+Start a node named plato
+```
+  PORT=4001 iex --name plato@10.0.0.10 --cookie monster -S mix phoenix.server
+```
+
+You should see log messages from plato indicating that it found socrates and successfully pinged it, which means both the nodes know about each other, and the pg2 groups will be linked.
+

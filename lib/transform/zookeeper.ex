@@ -24,7 +24,10 @@ defmodule Transform.Zookeeper do
   def connect!(state) do
     Logger.info("Zk connect attempt")
     {:ok, pid} = :erlzk.connect(
-      [{:localhost, 2181}],
+      [{
+        Application.get_env(:transform, :zookeeper)[:address],
+        Application.get_env(:transform, :zookeeper)[:port]
+      }],
       30000,
       [
         {:chroot, "/"},

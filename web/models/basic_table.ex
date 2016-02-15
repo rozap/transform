@@ -1,6 +1,6 @@
 defmodule Transform.BasicTableMeta do
   defstruct [
-    columns:      []
+    columns: []
   ]
 
   defmodule Type do
@@ -39,13 +39,13 @@ defmodule Transform.BasicTable do
   alias Transform.BasicTableMeta
 
   schema "basic_tables" do
-    belongs_to :upload, Transform.Upload
+    belongs_to :job, Transform.Job
     field :meta, Transform.BasicTableMeta.Type
     timestamps
   end
 
   def changeset(model, params \\ :empty) do
     model
-    |> cast(params, [:upload_id, :meta], [])
+    |> cast(params, [:job_id, :meta], [])
   end
 end

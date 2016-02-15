@@ -5,7 +5,7 @@ defmodule Transform.Herder do
   alias Transform.Chunk
   import Ecto.Query
 
-  @timeout 4 # Chunks orphaned for N seconds get retried
+  @timeout 40 # Chunks orphaned for N seconds get retried
   @max_attempts 4
 
   def start_link do
@@ -40,10 +40,10 @@ defmodule Transform.Herder do
       Repo.update!(cset)
 
       basic_table = Repo.get!(Transform.BasicTable, chunk.basic_table_id)
-      upload = Repo.get!(Transform.Upload, basic_table.upload_id)
-      Logger.info("Retrying orphaned chunk #{chunk.id} #{upload.dataset}, #{chunk.attempt_number} attempt")
+      job = Repo.get!(Transform.Job, basic_table.job_id)
+      Logger.info("Retrying orphaned chunk #{chunk.id} #{job.dataset}, #{chunk.attempt_number} attempt")
       Transform.Executor.Worker.push(
-        upload.dataset,
+        job,
         basic_table,
         chunk
       )

@@ -6,12 +6,18 @@ defmodule Transform.Repo.Migrations.CreateChunkLog do
       timestamps
     end
 
-    create table(:basic_tables) do
+    create table(:jobs) do
       add :upload_id, references(:uploads)
-      add :meta, :json
+      add :dataset, :string
+      add :source, :string
       timestamps
     end
 
+    create table(:basic_tables) do
+      add :job_id, references(:jobs)
+      add :meta, :json
+      timestamps
+    end
 
     create table(:chunks) do
       add :basic_table_id, references(:basic_tables)

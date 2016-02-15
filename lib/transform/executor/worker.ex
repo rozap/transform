@@ -6,6 +6,7 @@ defmodule Transform.Executor.Worker do
   alias Transform.Compiler
   alias Transform.Repo
   alias Transform.Chunk
+  alias Transform.BlobStore
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args)
@@ -22,8 +23,12 @@ defmodule Transform.Executor.Worker do
 
 
   defp dispatch(dataset_id, payload) do
-    :pg2.get_members(dataset_id)
-    |> Enum.each(fn listener -> send listener, payload end)
+    case :pg2.get_members(dataset_id) do
+      {:error, {:no_such_group, _}} -> {:error, :nobody_cares}
+      listeners -> Enum.each(listeners, fn listener ->
+        send listener, payload
+      end)
+    end
   end
 
   defp read_from_store(chunkref) do
@@ -64,10 +69,10 @@ defmodule Transform.Executor.Worker do
   end
 
 
-  def handle_cast({:chunk, dataset_id, basic_table, chunk}, state) do
+  def handle_cast({:chunk, job, basic_table, chunk}, state) do
     rows = read_from_store(chunk)
 
-    result = case Compiler.get(dataset_id) do
+    result = case Compiler.get(job) do
       {:ok, func} ->
         rows
         |> Enum.map(fn row -> transform_row(func, basic_table.meta.columns, row) end)
@@ -76,7 +81,7 @@ defmodule Transform.Executor.Worker do
           {:error, _} -> :errors
         end)
 
-      {:error, _} -> %{errors: [{:error, "no transform found for #{dataset_id}"}]}
+      {:error, _} -> %{errors: [{:error, "no transform found for #{inspect job}"}]}
     end
 
     # case Enum.random(1..10) do
@@ -90,25 +95,40 @@ defmodule Transform.Executor.Worker do
     transformed = Enum.map(successes, fn {ok, row} -> row end)
     errors      = Enum.map(errors, fn {:error, err} -> err end)
 
-    dispatch(dataset_id, {:transformed, basic_table, %{
+    # Logger.info("Processed a chunk")
+
+    dispatch(job.dataset, {:transformed, basic_table, %{
       errors: errors,
       transformed: transformed,
       aggregate: aggregate(transformed),
       chunk: chunk
     }})
 
+    rows = case transformed do
+      [first | _] ->
+        [
+          Enum.map(first, fn {k, _} -> k end) |
+          Enum.map(transformed, fn row ->
+            Enum.map(row, fn {_, v} -> v end)
+          end)
+        ]
+      _ -> []
+    end
+    location = BlobStore.write_transformed_chunk!(job.dataset, rows)
+
     cset = Chunk.changeset(chunk, %{
-      completed_at: Ecto.DateTime.utc
+      completed_at: Ecto.DateTime.utc,
+      completed_location: location
     })
     Repo.update(cset)
 
     {:noreply, state}
   end
 
-  def push(dataset_id, basic_table, chunk) do
+  def push(job, basic_table, chunk) do
     case Enum.take_random(:pg2.get_members(__MODULE__), 1) do
       [] -> raise ArgumentError, message: "No members of pg2 group #{inspect __MODULE__}"
-      [someone] -> GenServer.cast(someone, {:chunk, dataset_id, basic_table, chunk})
+      [someone] -> GenServer.cast(someone, {:chunk, job, basic_table, chunk})
     end
   end
 

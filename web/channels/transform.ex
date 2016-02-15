@@ -11,7 +11,6 @@ defmodule Transform.Channels.Transform do
     Logger.info("Joining transform #{dataset_id}")
     socket = assign(socket, :dataset_id, dataset_id)
 
-    Compiler.compile(dataset_id, [])
     :pg2.create(dataset_id)
     :pg2.join(dataset_id, self)
 
@@ -23,7 +22,6 @@ defmodule Transform.Channels.Transform do
 
     {:ok, socket}
   end
-
 
   def handle_in("transform", %{"transforms" => transforms}, socket) do
     Compiler.compile(socket.assigns.dataset_id, transforms)
@@ -41,7 +39,6 @@ defmodule Transform.Channels.Transform do
     Aggregator.push(socket.assigns.aggregator, socket, result.aggregate)
 
     {:noreply, socket}
-
   end
 
   defp push_progress(socket, result) do
@@ -56,7 +53,6 @@ defmodule Transform.Channels.Transform do
     push_progress(socket, result)
     push_result(socket, result)
   end
-
 
   def handle_info({:transformed, basic_table, result}, socket) do
     seen = socket.assigns.seen

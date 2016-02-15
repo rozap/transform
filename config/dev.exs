@@ -47,13 +47,17 @@ config :transform, :zookeeper,
 
 config :transform, :workers,
   executor: [
-    count: 2,
-    high_water_mark: 2
+    count: 8,
+    high_water_mark: 8
   ],
   basic_table: [
-    count: 2,
-    high_water_mark: 2
+    count: 8,
+    high_water_mark: 8
   ]
 
 config :transform, :blobs,
   path: "/tmp"
+
+config :transform, :herder,
+  interval: 60,
+  max_attempts: 4

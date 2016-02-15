@@ -42,7 +42,7 @@ config :transform, Transform.Repo,
   pool_size: 10
 
 config :transform, :zookeeper,
-  address: "localhost",
+  address: :"localhost",
   port: 2181
 
 config :transform, :workers,

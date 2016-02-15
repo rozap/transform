@@ -5,30 +5,31 @@ defmodule Transform.Herder do
   alias Transform.Chunk
   import Ecto.Query
 
-  @timeout 8 # Chunks orphaned for N seconds get retried
-  @max_attempts 4
 
   def start_link do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   def init(_) do
-    :timer.send_interval(@timeout * 1000, self, :tick)
+    timeout = Application.get_env(:transform, :herder)[:interval]
+    :timer.send_interval(timeout * 1000, self, :tick)
     {:ok, %{}}
   end
 
   def handle_info(:tick, state) do
     now = :calendar.local_time
+    max_attempts = Application.get_env(:transform, :herder)[:attempts]
+    timeout = Application.get_env(:transform, :herder)[:interval]
 
     cutoff = Calendar.DateTime.now_utc
-    |> Calendar.DateTime.advance!(@timeout)
+    |> Calendar.DateTime.advance!(timeout)
 
 
     orphaned_set = Repo.all(
       from c in Chunk,
       where:
         c.inserted_at < ^cutoff and
-        c.attempt_number < @max_attempts and
+        c.attempt_number < ^max_attempts and
         is_nil(c.completed_at),
       select: c
     )
@@ -48,7 +49,6 @@ defmodule Transform.Herder do
         chunk
       )
     end)
-
 
     {:noreply, state}
   end

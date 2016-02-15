@@ -12,8 +12,7 @@ defmodule Transform.Channels.Transform do
     socket = assign(socket, :dataset_id, dataset_id)
 
     :pg2.create(dataset_id)
-    :pg2.join(dataset_id, self)
-
+    :ok = :pg2.join(dataset_id, self)
     {:ok, ag_pid} = GenServer.start_link(Aggregator, [])
 
     socket = socket

@@ -99,34 +99,40 @@ defmodule Transform.Executor.Worker do
     transformed = Enum.map(successes, fn {ok, row} -> row end)
     errors      = Enum.map(errors, fn {:error, err} -> err end)
 
-    # Logger.info("Processed a chunk")
+    # This isn't actually correct
+    case Repo.get(Chunk, chunk.id) do
+      %Chunk{completed_location: nil} ->
+        dispatch(job.dataset, {:transformed, basic_table, %{
+          errors: errors,
+          transformed: transformed,
+          aggregate: aggregate(transformed),
+          chunk: chunk
+        }})
 
-    dispatch(job.dataset, {:transformed, basic_table, %{
-      errors: errors,
-      transformed: transformed,
-      aggregate: aggregate(transformed),
-      chunk: chunk
-    }})
 
+        rows = case transformed do
+          [first | _] ->
+            [
+              Enum.map(first, fn {k, _} -> k end) |
+              Enum.map(transformed, fn row ->
+                Enum.map(row, fn {_, v} -> v end)
+              end)
+            ]
+          _ -> []
+        end
 
-    rows = case transformed do
-      [first | _] ->
-        [
-          Enum.map(first, fn {k, _} -> k end) |
-          Enum.map(transformed, fn row ->
-            Enum.map(row, fn {_, v} -> v end)
-          end)
-        ]
-      _ -> []
+        location = BlobStore.write_transformed_chunk!(job.dataset, rows)
+
+        cset = Chunk.changeset(chunk, %{
+          completed_at: Ecto.DateTime.utc,
+          completed_location: location
+        })
+        Repo.update(cset)
+        Logger.info("Finished working on #{chunk.sequence_number} for #{job.id}")
+      _ -> 
+        Logger.info("Chunk #{chunk.id} has already been completed")
+
     end
-    location = BlobStore.write_transformed_chunk!(job.dataset, rows)
-
-    cset = Chunk.changeset(chunk, %{
-      completed_at: Ecto.DateTime.utc,
-      completed_location: location
-    })
-    Repo.update(cset)
-    Logger.info("Finished working on #{chunk.sequence_number} for #{job.id}")
 
     :ok
   end

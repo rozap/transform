@@ -90,18 +90,29 @@ class Histogram {
 
 class ProgressView {
   constructor(channel) {
+    this._count = 0;
+    this._errCount = 0;
     this.$el = $('#progress')
     channel.on("dataset:progress", this.update.bind(this));
+    channel.on("dataset:errors", this.onError.bind(this));
+
+  }
+
+  onError({result: errors}) {
+    this._errCount += errors.length;
+    this.render();
   }
 
   update({rows: rows}) {
-    this._count = rows;
+    //always move forward
+    this._count = Math.max(rows, this._count);
     this.render();
   }
 
   render() {
     this.$el.html(`
-      Processed ${this._count} rows
+      Processed ${this._count} rows with ${this._errCount} errors. <br>
+      Total: ${this._count + this._errCount}
     `)
   }
 }

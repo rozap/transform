@@ -70,10 +70,10 @@ defmodule Transform.Api.BasicTable do
                 })
                 {job, basic_table_for(job, columns)}
             end
-            Transform.BasicTable.Worker.push(job, basic_table, {0, rows})
+            Transform.BasicTable.Worker.push(job, basic_table, 0, rows)
             {[], {job, basic_table, 1}}
           chunk, {job, basic_table, chunk_num} ->
-            Transform.BasicTable.Worker.push(job, basic_table, {chunk_num, chunk})
+            Transform.BasicTable.Worker.push(job, basic_table, chunk_num, chunk)
             {[], {job, basic_table, chunk_num + 1}}
           end)
         |> Stream.run

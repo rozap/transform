@@ -1,5 +1,5 @@
 defmodule Transform.Executor.Worker do
-  use GenServer
+  use Workex
   require Logger
   alias Transform.BasicTableServer
   alias Transform.Interpreter
@@ -7,13 +7,16 @@ defmodule Transform.Executor.Worker do
   alias Transform.Repo
   alias Transform.Chunk
   alias Transform.BlobStore
+  alias Transform.Backoff
 
   def start_link(args) do
-    GenServer.start_link(__MODULE__, args)
+    hwm = Application.get_env(:transform, :workers)[:executor][:high_water_mark]
+    {:ok, pid} = Workex.start_link(__MODULE__, args, max_size: hwm)
+    :pg2.join(__MODULE__, pid)
+    {:ok, pid}
   end
 
   def init([id: id]) do
-    :pg2.join(__MODULE__, self)
     Logger.info("Started #{inspect __MODULE__} #{id}")
     {:ok, %{
       transforms: %{},
@@ -69,7 +72,7 @@ defmodule Transform.Executor.Worker do
   end
 
 
-  def handle_cast({:chunk, job, basic_table, chunk}, state) do
+  def handle_chunk({:chunk, job, basic_table, chunk}, state) do
     rows = read_from_store(chunk)
 
     result = case Compiler.get(job) do
@@ -104,6 +107,7 @@ defmodule Transform.Executor.Worker do
       chunk: chunk
     }})
 
+
     rows = case transformed do
       [first | _] ->
         [
@@ -121,15 +125,31 @@ defmodule Transform.Executor.Worker do
       completed_location: location
     })
     Repo.update(cset)
+    Logger.info("Finished working on #{chunk.sequence_number} for #{job.id}")
 
-    {:noreply, state}
+    :ok
   end
 
+  def handle(chunks, state) do
+    Enum.reduce_while(chunks, :ok, fn chunk, acc ->
+      case handle_chunk(chunk, state) do
+        :ok -> {:cont, acc}
+        {:error, reason} ->
+          Logger.error("Failed to push chunk #{reason}")
+          {:halt, reason}
+      end
+    end)
+
+    {:ok, state}
+  end
+
+
   def push(job, basic_table, chunk) do
-    case Enum.take_random(:pg2.get_members(__MODULE__), 1) do
-      [] -> raise ArgumentError, message: "No members of pg2 group #{inspect __MODULE__}"
-      [someone] -> GenServer.cast(someone, {:chunk, job, basic_table, chunk})
-    end
+    Backoff.try_until(
+      __MODULE__,
+      {:chunk, job, basic_table, chunk},
+      10_000
+    )
   end
 
 end

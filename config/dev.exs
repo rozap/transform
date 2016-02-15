@@ -46,5 +46,11 @@ config :transform, :zookeeper,
   port: 2181
 
 config :transform, :workers,
-  executor: 8,
-  basic_table: 8
+  executor: [
+    count: 2,
+    high_water_mark: 2
+  ],
+  basic_table: [
+    count: 2,
+    high_water_mark: 2
+  ]

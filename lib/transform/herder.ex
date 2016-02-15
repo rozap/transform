@@ -5,7 +5,7 @@ defmodule Transform.Herder do
   alias Transform.Chunk
   import Ecto.Query
 
-  @timeout 40 # Chunks orphaned for N seconds get retried
+  @timeout 8 # Chunks orphaned for N seconds get retried
   @max_attempts 4
 
   def start_link do

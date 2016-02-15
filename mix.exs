@@ -26,7 +26,8 @@ defmodule Transform.Mixfile do
       :gettext,
       :phoenix_ecto,
       :postgrex,
-      :erlzk
+      :erlzk,
+      :workex
     ]]
   end
 
@@ -40,6 +41,7 @@ defmodule Transform.Mixfile do
   defp deps do
     [{:phoenix, "~> 1.1.4"},
      {:postgrex, ">= 0.0.0"},
+     {:workex, "~> 0.10.0"},
      {:phoenix_ecto, "~> 2.0"},
      {:phoenix_html, "~> 2.4"},
      {:phoenix_live_reload, "~> 1.0", only: :dev},

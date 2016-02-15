@@ -7,7 +7,7 @@ use Mix.Config
 # watchers to your application. For example, we use it
 # with brunch.io to recompile .js and .css sources.
 config :transform, Transform.Endpoint,
-  http: [port: 4000],
+  http: [port: {:system, "PORT"}],
   debug_errors: true,
   code_reloader: true,
   check_origin: false,
@@ -40,3 +40,7 @@ config :transform, Transform.Repo,
   database: "transform_dev",
   hostname: "localhost",
   pool_size: 10
+
+config :transform, :zookeeper,
+  address: "localhost",
+  port: 2181

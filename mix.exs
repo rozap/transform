@@ -18,8 +18,16 @@ defmodule Transform.Mixfile do
   # Type `mix help compile.app` for more information.
   def application do
     [mod: {Transform, []},
-     applications: [:phoenix, :phoenix_html, :cowboy, :logger, :gettext,
-                    :phoenix_ecto, :postgrex]]
+     applications: [
+      :phoenix,
+      :phoenix_html,
+      :cowboy,
+      :logger,
+      :gettext,
+      :phoenix_ecto,
+      :postgrex,
+      :erlzk
+    ]]
   end
 
   # Specifies which paths to compile per environment.
@@ -40,7 +48,8 @@ defmodule Transform.Mixfile do
      {:uuid, "~> 1.1"},
      {:csv, "~> 1.2.3"},
      {:poolboy, "~> 1.5"},
-     {:calendar, "~> 0.12.4"}
+     {:calendar, "~> 0.12.4"},
+     {:erlzk, "~> 0.6.1"}
    ]
   end
 

@@ -35,7 +35,8 @@ defmodule Transform.Executor.Worker do
   end
 
   defp read_from_store(chunkref) do
-    File.stream!(chunkref.location)
+    chunkref.location
+    |> BlobStore.read!
     |> CSV.decode
     |> Enum.into([])
   end

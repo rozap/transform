@@ -32,7 +32,6 @@ class UploadView {
     this.name = "No file selected";
     this.$el = $('#upload');
     this.render();
-
     $('#upload input').change((e) => {
       var reader = new FileReader();
 

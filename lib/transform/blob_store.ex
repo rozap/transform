@@ -1,14 +1,18 @@
 defmodule Transform.BlobStore do
   defp write!(kind, ds_id, chunk) do
-    path = "/tmp/#{kind}/#{ds_id}_chunk_#{UUID.uuid4}.csv"
-    device = File.open!(path, [:write])
+    relative = "#{kind}/#{ds_id}_chunk_#{UUID.uuid4}.csv"
+    absolute = Application.get_env(:transform, :blobs)[:path]
+    |> Path.join(relative)
+
+    device = File.open!(absolute, [:write])
 
     chunk
     |> CSV.encode
     |> Enum.each(fn line -> IO.binwrite(device, line) end)
 
     File.close(device)
-    path
+
+    relative
   end
 
   def write_basic_table_chunk!(ds_id, chunk) do
@@ -17,6 +21,12 @@ defmodule Transform.BlobStore do
 
   def write_transformed_chunk!(ds_id, chunk) do
     write!("transformed", ds_id, chunk)
+  end
+
+  def read!(relative) do
+    Application.get_env(:transform, :blobs)[:path]
+    |> Path.join(relative)
+    |> File.stream!
   end
 
 end

@@ -105,13 +105,13 @@ exprType env expr =
             case getOks argTypeResults of
               Ok argTypes ->
                 if argsMatch fun.arguments argTypes then
+                  Ok fun.returnType
+                else
                   Err
                     (WrongArgs
                       { given = argTypes
                       , expected = fun.arguments
                       })
-                else
-                  Ok fun.returnType
 
               Err errs ->
                 Err (MultipleErrors errs)
@@ -152,7 +152,7 @@ getOks : List (Result a b) -> Result (List a) (List b)
 getOks results =
   let
     go soFarErr soFarOk remaining =
-      case results of
+      case remaining of
         [] ->
           case (soFarErr, soFarOk) of
             ([], xs) ->
@@ -346,6 +346,8 @@ shmooshSteps step1 step2 =
 stepsToMapping : TransformScript -> Env -> (List (Maybe InvalidStepError), SchemaMapping)
 stepsToMapping script env =
   let
+    d =
+      Debug.log "stepsToMapping" (script, env)
     initialMapping =
       env.columns
       |> List.map (\name -> (name, SourceColumn name))

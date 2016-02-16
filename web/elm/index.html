@@ -10873,6 +10873,393 @@ Elm.List.Extra.make = function (_elm) {
                                    ,lift2: lift2
                                    ,lift3: lift3
                                    ,lift4: lift4};
+};Elm.Native.Time = {};
+
+Elm.Native.Time.make = function(localRuntime)
+{
+	localRuntime.Native = localRuntime.Native || {};
+	localRuntime.Native.Time = localRuntime.Native.Time || {};
+	if (localRuntime.Native.Time.values)
+	{
+		return localRuntime.Native.Time.values;
+	}
+
+	var NS = Elm.Native.Signal.make(localRuntime);
+	var Maybe = Elm.Maybe.make(localRuntime);
+
+
+	// FRAMES PER SECOND
+
+	function fpsWhen(desiredFPS, isOn)
+	{
+		var msPerFrame = 1000 / desiredFPS;
+		var ticker = NS.input('fps-' + desiredFPS, null);
+
+		function notifyTicker()
+		{
+			localRuntime.notify(ticker.id, null);
+		}
+
+		function firstArg(x, y)
+		{
+			return x;
+		}
+
+		// input fires either when isOn changes, or when ticker fires.
+		// Its value is a tuple with the current timestamp, and the state of isOn
+		var input = NS.timestamp(A3(NS.map2, F2(firstArg), NS.dropRepeats(isOn), ticker));
+
+		var initialState = {
+			isOn: false,
+			time: localRuntime.timer.programStart,
+			delta: 0
+		};
+
+		var timeoutId;
+
+		function update(input, state)
+		{
+			var currentTime = input._0;
+			var isOn = input._1;
+			var wasOn = state.isOn;
+			var previousTime = state.time;
+
+			if (isOn)
+			{
+				timeoutId = localRuntime.setTimeout(notifyTicker, msPerFrame);
+			}
+			else if (wasOn)
+			{
+				clearTimeout(timeoutId);
+			}
+
+			return {
+				isOn: isOn,
+				time: currentTime,
+				delta: (isOn && !wasOn) ? 0 : currentTime - previousTime
+			};
+		}
+
+		return A2(
+			NS.map,
+			function(state) { return state.delta; },
+			A3(NS.foldp, F2(update), update(input.value, initialState), input)
+		);
+	}
+
+
+	// EVERY
+
+	function every(t)
+	{
+		var ticker = NS.input('every-' + t, null);
+		function tellTime()
+		{
+			localRuntime.notify(ticker.id, null);
+		}
+		var clock = A2(NS.map, fst, NS.timestamp(ticker));
+		setInterval(tellTime, t);
+		return clock;
+	}
+
+
+	function fst(pair)
+	{
+		return pair._0;
+	}
+
+
+	function read(s)
+	{
+		var t = Date.parse(s);
+		return isNaN(t) ? Maybe.Nothing : Maybe.Just(t);
+	}
+
+	return localRuntime.Native.Time.values = {
+		fpsWhen: F2(fpsWhen),
+		every: every,
+		toDate: function(t) { return new Date(t); },
+		read: read
+	};
+};
+Elm.Time = Elm.Time || {};
+Elm.Time.make = function (_elm) {
+   "use strict";
+   _elm.Time = _elm.Time || {};
+   if (_elm.Time.values) return _elm.Time.values;
+   var _U = Elm.Native.Utils.make(_elm),
+   $Basics = Elm.Basics.make(_elm),
+   $Native$Signal = Elm.Native.Signal.make(_elm),
+   $Native$Time = Elm.Native.Time.make(_elm),
+   $Signal = Elm.Signal.make(_elm);
+   var _op = {};
+   var delay = $Native$Signal.delay;
+   var since = F2(function (time,signal) {
+      var stop = A2($Signal.map,$Basics.always(-1),A2(delay,time,signal));
+      var start = A2($Signal.map,$Basics.always(1),signal);
+      var delaydiff = A3($Signal.foldp,F2(function (x,y) {    return x + y;}),0,A2($Signal.merge,start,stop));
+      return A2($Signal.map,F2(function (x,y) {    return !_U.eq(x,y);})(0),delaydiff);
+   });
+   var timestamp = $Native$Signal.timestamp;
+   var every = $Native$Time.every;
+   var fpsWhen = $Native$Time.fpsWhen;
+   var fps = function (targetFrames) {    return A2(fpsWhen,targetFrames,$Signal.constant(true));};
+   var inMilliseconds = function (t) {    return t;};
+   var millisecond = 1;
+   var second = 1000 * millisecond;
+   var minute = 60 * second;
+   var hour = 60 * minute;
+   var inHours = function (t) {    return t / hour;};
+   var inMinutes = function (t) {    return t / minute;};
+   var inSeconds = function (t) {    return t / second;};
+   return _elm.Time.values = {_op: _op
+                             ,millisecond: millisecond
+                             ,second: second
+                             ,minute: minute
+                             ,hour: hour
+                             ,inMilliseconds: inMilliseconds
+                             ,inSeconds: inSeconds
+                             ,inMinutes: inMinutes
+                             ,inHours: inHours
+                             ,fps: fps
+                             ,fpsWhen: fpsWhen
+                             ,every: every
+                             ,timestamp: timestamp
+                             ,delay: delay
+                             ,since: since};
+};Elm.Native.Effects = {};
+Elm.Native.Effects.make = function(localRuntime) {
+
+	localRuntime.Native = localRuntime.Native || {};
+	localRuntime.Native.Effects = localRuntime.Native.Effects || {};
+	if (localRuntime.Native.Effects.values)
+	{
+		return localRuntime.Native.Effects.values;
+	}
+
+	var Task = Elm.Native.Task.make(localRuntime);
+	var Utils = Elm.Native.Utils.make(localRuntime);
+	var Signal = Elm.Signal.make(localRuntime);
+	var List = Elm.Native.List.make(localRuntime);
+
+
+	// polyfill so things will work even if rAF is not available for some reason
+	var _requestAnimationFrame =
+		typeof requestAnimationFrame !== 'undefined'
+			? requestAnimationFrame
+			: function(cb) { setTimeout(cb, 1000 / 60); }
+			;
+
+
+	// batchedSending and sendCallback implement a small state machine in order
+	// to schedule only one send(time) call per animation frame.
+	//
+	// Invariants:
+	// 1. In the NO_REQUEST state, there is never a scheduled sendCallback.
+	// 2. In the PENDING_REQUEST and EXTRA_REQUEST states, there is always exactly
+	//    one scheduled sendCallback.
+	var NO_REQUEST = 0;
+	var PENDING_REQUEST = 1;
+	var EXTRA_REQUEST = 2;
+	var state = NO_REQUEST;
+	var messageArray = [];
+
+
+	function batchedSending(address, tickMessages)
+	{
+		// insert ticks into the messageArray
+		var foundAddress = false;
+
+		for (var i = messageArray.length; i--; )
+		{
+			if (messageArray[i].address === address)
+			{
+				foundAddress = true;
+				messageArray[i].tickMessages = A3(List.foldl, List.cons, messageArray[i].tickMessages, tickMessages);
+				break;
+			}
+		}
+
+		if (!foundAddress)
+		{
+			messageArray.push({ address: address, tickMessages: tickMessages });
+		}
+
+		// do the appropriate state transition
+		switch (state)
+		{
+			case NO_REQUEST:
+				_requestAnimationFrame(sendCallback);
+				state = PENDING_REQUEST;
+				break;
+			case PENDING_REQUEST:
+				state = PENDING_REQUEST;
+				break;
+			case EXTRA_REQUEST:
+				state = PENDING_REQUEST;
+				break;
+		}
+	}
+
+
+	function sendCallback(time)
+	{
+		switch (state)
+		{
+			case NO_REQUEST:
+				// This state should not be possible. How can there be no
+				// request, yet somehow we are actively fulfilling a
+				// request?
+				throw new Error(
+					'Unexpected send callback.\n' +
+					'Please report this to <https://github.com/evancz/elm-effects/issues>.'
+				);
+
+			case PENDING_REQUEST:
+				// At this point, we do not *know* that another frame is
+				// needed, but we make an extra request to rAF just in
+				// case. It's possible to drop a frame if rAF is called
+				// too late, so we just do it preemptively.
+				_requestAnimationFrame(sendCallback);
+				state = EXTRA_REQUEST;
+
+				// There's also stuff we definitely need to send.
+				send(time);
+				return;
+
+			case EXTRA_REQUEST:
+				// Turns out the extra request was not needed, so we will
+				// stop calling rAF. No reason to call it all the time if
+				// no one needs it.
+				state = NO_REQUEST;
+				return;
+		}
+	}
+
+
+	function send(time)
+	{
+		for (var i = messageArray.length; i--; )
+		{
+			var messages = A3(
+				List.foldl,
+				F2( function(toAction, list) { return List.Cons(toAction(time), list); } ),
+				List.Nil,
+				messageArray[i].tickMessages
+			);
+			Task.perform( A2(Signal.send, messageArray[i].address, messages) );
+		}
+		messageArray = [];
+	}
+
+
+	function requestTickSending(address, tickMessages)
+	{
+		return Task.asyncFunction(function(callback) {
+			batchedSending(address, tickMessages);
+			callback(Task.succeed(Utils.Tuple0));
+		});
+	}
+
+
+	return localRuntime.Native.Effects.values = {
+		requestTickSending: F2(requestTickSending)
+	};
+
+};
+Elm.Effects = Elm.Effects || {};
+Elm.Effects.make = function (_elm) {
+   "use strict";
+   _elm.Effects = _elm.Effects || {};
+   if (_elm.Effects.values) return _elm.Effects.values;
+   var _U = Elm.Native.Utils.make(_elm),
+   $Basics = Elm.Basics.make(_elm),
+   $Debug = Elm.Debug.make(_elm),
+   $List = Elm.List.make(_elm),
+   $Maybe = Elm.Maybe.make(_elm),
+   $Native$Effects = Elm.Native.Effects.make(_elm),
+   $Result = Elm.Result.make(_elm),
+   $Signal = Elm.Signal.make(_elm),
+   $Task = Elm.Task.make(_elm),
+   $Time = Elm.Time.make(_elm);
+   var _op = {};
+   var ignore = function (task) {    return A2($Task.map,$Basics.always({ctor: "_Tuple0"}),task);};
+   var requestTickSending = $Native$Effects.requestTickSending;
+   var toTaskHelp = F3(function (address,effect,_p0) {
+      var _p1 = _p0;
+      var _p5 = _p1._1;
+      var _p4 = _p1;
+      var _p3 = _p1._0;
+      var _p2 = effect;
+      switch (_p2.ctor)
+      {case "Task": var reporter = A2($Task.andThen,_p2._0,function (answer) {    return A2($Signal.send,address,_U.list([answer]));});
+           return {ctor: "_Tuple2",_0: A2($Task.andThen,_p3,$Basics.always(ignore($Task.spawn(reporter)))),_1: _p5};
+         case "Tick": return {ctor: "_Tuple2",_0: _p3,_1: A2($List._op["::"],_p2._0,_p5)};
+         case "None": return _p4;
+         default: return A3($List.foldl,toTaskHelp(address),_p4,_p2._0);}
+   });
+   var toTask = F2(function (address,effect) {
+      var _p6 = A3(toTaskHelp,address,effect,{ctor: "_Tuple2",_0: $Task.succeed({ctor: "_Tuple0"}),_1: _U.list([])});
+      var combinedTask = _p6._0;
+      var tickMessages = _p6._1;
+      return $List.isEmpty(tickMessages) ? combinedTask : A2($Task.andThen,combinedTask,$Basics.always(A2(requestTickSending,address,tickMessages)));
+   });
+   var Never = function (a) {    return {ctor: "Never",_0: a};};
+   var Batch = function (a) {    return {ctor: "Batch",_0: a};};
+   var batch = Batch;
+   var None = {ctor: "None"};
+   var none = None;
+   var Tick = function (a) {    return {ctor: "Tick",_0: a};};
+   var tick = Tick;
+   var Task = function (a) {    return {ctor: "Task",_0: a};};
+   var task = Task;
+   var map = F2(function (func,effect) {
+      var _p7 = effect;
+      switch (_p7.ctor)
+      {case "Task": return Task(A2($Task.map,func,_p7._0));
+         case "Tick": return Tick(function (_p8) {    return func(_p7._0(_p8));});
+         case "None": return None;
+         default: return Batch(A2($List.map,map(func),_p7._0));}
+   });
+   return _elm.Effects.values = {_op: _op,none: none,task: task,tick: tick,map: map,batch: batch,toTask: toTask};
+};Elm.StartApp = Elm.StartApp || {};
+Elm.StartApp.make = function (_elm) {
+   "use strict";
+   _elm.StartApp = _elm.StartApp || {};
+   if (_elm.StartApp.values) return _elm.StartApp.values;
+   var _U = Elm.Native.Utils.make(_elm),
+   $Basics = Elm.Basics.make(_elm),
+   $Debug = Elm.Debug.make(_elm),
+   $Effects = Elm.Effects.make(_elm),
+   $Html = Elm.Html.make(_elm),
+   $List = Elm.List.make(_elm),
+   $Maybe = Elm.Maybe.make(_elm),
+   $Result = Elm.Result.make(_elm),
+   $Signal = Elm.Signal.make(_elm),
+   $Task = Elm.Task.make(_elm);
+   var _op = {};
+   var start = function (config) {
+      var updateStep = F2(function (action,_p0) {
+         var _p1 = _p0;
+         var _p2 = A2(config.update,action,_p1._0);
+         var newModel = _p2._0;
+         var additionalEffects = _p2._1;
+         return {ctor: "_Tuple2",_0: newModel,_1: $Effects.batch(_U.list([_p1._1,additionalEffects]))};
+      });
+      var update = F2(function (actions,_p3) {    var _p4 = _p3;return A3($List.foldl,updateStep,{ctor: "_Tuple2",_0: _p4._0,_1: $Effects.none},actions);});
+      var messages = $Signal.mailbox(_U.list([]));
+      var singleton = function (action) {    return _U.list([action]);};
+      var address = A2($Signal.forwardTo,messages.address,singleton);
+      var inputs = $Signal.mergeMany(A2($List._op["::"],messages.signal,A2($List.map,$Signal.map(singleton),config.inputs)));
+      var effectsAndModel = A3($Signal.foldp,update,config.init,inputs);
+      var model = A2($Signal.map,$Basics.fst,effectsAndModel);
+      return {html: A2($Signal.map,config.view(address),model)
+             ,model: model
+             ,tasks: A2($Signal.map,function (_p5) {    return A2($Effects.toTask,messages.address,$Basics.snd(_p5));},effectsAndModel)};
+   };
+   var App = F3(function (a,b,c) {    return {html: a,model: b,tasks: c};});
+   var Config = F4(function (a,b,c,d) {    return {init: a,update: b,view: c,inputs: d};});
+   return _elm.StartApp.values = {_op: _op,start: start,Config: Config,App: App};
 };Elm.StartApp = Elm.StartApp || {};
 Elm.StartApp.Simple = Elm.StartApp.Simple || {};
 Elm.StartApp.Simple.make = function (_elm) {
@@ -10918,36 +11305,56 @@ Elm.Util.make = function (_elm) {
    $Result = Elm.Result.make(_elm),
    $Signal = Elm.Signal.make(_elm);
    var _op = {};
+   var getMaybe = F2(function (msg,maybe) {
+      var _p0 = maybe;
+      if (_p0.ctor === "Just") {
+            return _p0._0;
+         } else {
+            return _U.crashCase("Util",{start: {line: 41,column: 3},end: {line: 46,column: 22}},_p0)(msg);
+         }
+   });
+   var setAt = F3(function (item,idx,list) {
+      var _p2 = {ctor: "_Tuple2",_0: idx,_1: list};
+      if (_p2._1.ctor === "[]") {
+            return $Maybe.Nothing;
+         } else {
+            if (_p2._0 === 0) {
+                  return $Maybe.Just(A2($List._op["::"],item,_p2._1._1));
+               } else {
+                  return A2($Maybe.map,function (ys) {    return A2($List._op["::"],_p2._1._0,ys);},A3(setAt,item,_p2._0 - 1,_p2._1._1));
+               }
+         }
+   });
    var removeAt = F2(function (idx,list) {
       return A2($List.map,
       $Basics.snd,
       A2($List.filter,
-      function (_p0) {
-         var _p1 = _p0;
-         return !_U.eq(_p1._0,idx);
+      function (_p3) {
+         var _p4 = _p3;
+         return !_U.eq(_p4._0,idx);
       },
       A2($List.indexedMap,F2(function (v0,v1) {    return {ctor: "_Tuple2",_0: v0,_1: v1};}),list)));
    });
    var insertAt = F3(function (item,idx,list) {
-      var _p2 = {ctor: "_Tuple2",_0: idx,_1: list};
-      _v1_0: do {
-         if (_p2._1.ctor === "[]") {
-               if (_p2._0 === 0) {
-                     break _v1_0;
+      var _p5 = {ctor: "_Tuple2",_0: idx,_1: list};
+      _v3_0: do {
+         if (_p5._1.ctor === "[]") {
+               if (_p5._0 === 0) {
+                     break _v3_0;
                   } else {
                      return $Maybe.Nothing;
                   }
             } else {
-               if (_p2._0 === 0) {
-                     break _v1_0;
+               if (_p5._0 === 0) {
+                     break _v3_0;
                   } else {
-                     return A2($Maybe.map,function (ys) {    return A2($List._op["::"],_p2._1._0,ys);},A3(insertAt,item,_p2._0 - 1,_p2._1._1));
+                     return A2($Maybe.map,function (ys) {    return A2($List._op["::"],_p5._1._0,ys);},A3(insertAt,item,_p5._0 - 1,_p5._1._1));
                   }
             }
       } while (false);
-      return $Maybe.Just(A2($List._op["::"],item,_p2._1));
+      return $Maybe.Just(A2($List._op["::"],item,_p5._1));
    });
-   return _elm.Util.values = {_op: _op,insertAt: insertAt,removeAt: removeAt};
+   return _elm.Util.values = {_op: _op,insertAt: insertAt,removeAt: removeAt,setAt: setAt,getMaybe: getMaybe};
 };Elm.Model = Elm.Model || {};
 Elm.Model.make = function (_elm) {
    "use strict";
@@ -11235,6 +11642,226 @@ Elm.Model.make = function (_elm) {
                               ,smooshScript: smooshScript
                               ,shmooshSteps: shmooshSteps
                               ,stepsToMapping: stepsToMapping};
+};Elm.Table = Elm.Table || {};
+Elm.Table.make = function (_elm) {
+   "use strict";
+   _elm.Table = _elm.Table || {};
+   if (_elm.Table.values) return _elm.Table.values;
+   var _U = Elm.Native.Utils.make(_elm),
+   $Basics = Elm.Basics.make(_elm),
+   $Debug = Elm.Debug.make(_elm),
+   $List = Elm.List.make(_elm),
+   $Maybe = Elm.Maybe.make(_elm),
+   $Model = Elm.Model.make(_elm),
+   $Result = Elm.Result.make(_elm),
+   $Signal = Elm.Signal.make(_elm);
+   var _op = {};
+   var addChunk = F2(function (rows,table) {    return _U.update(table,{rows: A2($Basics._op["++"],table.rows,A2($List.map,$List.map($Basics.snd),rows))});});
+   var fromFirstChunk = function (chunk) {
+      return A2($Maybe.map,
+      function (firstRow) {
+         var colNames = A2($List.map,$Basics.fst,firstRow);
+         return A2(addChunk,chunk,{columnNames: colNames,rows: _U.list([])});
+      },
+      $List.head(chunk));
+   };
+   var Table = F2(function (a,b) {    return {columnNames: a,rows: b};});
+   return _elm.Table.values = {_op: _op,Table: Table,fromFirstChunk: fromFirstChunk,addChunk: addChunk};
+};Elm.PrimitiveEditors = Elm.PrimitiveEditors || {};
+Elm.PrimitiveEditors.make = function (_elm) {
+   "use strict";
+   _elm.PrimitiveEditors = _elm.PrimitiveEditors || {};
+   if (_elm.PrimitiveEditors.values) return _elm.PrimitiveEditors.values;
+   var _U = Elm.Native.Utils.make(_elm),
+   $Basics = Elm.Basics.make(_elm),
+   $Debug = Elm.Debug.make(_elm),
+   $Html = Elm.Html.make(_elm),
+   $Html$Attributes = Elm.Html.Attributes.make(_elm),
+   $Html$Events = Elm.Html.Events.make(_elm),
+   $Json$Decode = Elm.Json.Decode.make(_elm),
+   $List = Elm.List.make(_elm),
+   $Maybe = Elm.Maybe.make(_elm),
+   $Result = Elm.Result.make(_elm),
+   $Signal = Elm.Signal.make(_elm),
+   $StartApp$Simple = Elm.StartApp.Simple.make(_elm),
+   $String = Elm.String.make(_elm);
+   var _op = {};
+   var update = F2(function (action,model) {
+      var _p0 = action;
+      switch (_p0.ctor)
+      {case "EditString": return _U.update(model,{str: _p0._0});
+         case "EditBool": return _U.update(model,{b: _p0._0});
+         default: return _U.update(model,{i: _p0._0});}
+   });
+   var EditInt = function (a) {    return {ctor: "EditInt",_0: a};};
+   var EditBool = function (a) {    return {ctor: "EditBool",_0: a};};
+   var EditString = function (a) {    return {ctor: "EditString",_0: a};};
+   var Model = F3(function (a,b,c) {    return {str: a,b: b,i: c};});
+   var selector = F3(function (addr,options,curVal) {
+      return A2($Html.select,
+      _U.list([A3($Html$Events.on,"change",A2($Json$Decode.at,_U.list(["target","value"]),$Json$Decode.string),$Signal.message(addr))]),
+      A2($List.map,function (opt) {    return A2($Html.option,_U.list([$Html$Attributes.selected(_U.eq(opt,curVal))]),_U.list([$Html.text(opt)]));},options));
+   });
+   var targetValue = function (decoder) {    return A2($Json$Decode.at,_U.list(["target","value"]),decoder);};
+   var $int = F2(function (addr,currentValue) {
+      return A2($Html.input,
+      _U.list([A3($Html$Events.on,"input",targetValue(A2($Json$Decode.customDecoder,$Json$Decode.string,$String.toInt)),$Signal.message(addr))
+              ,$Html$Attributes.type$("number")
+              ,$Html$Attributes.step("1")
+              ,$Html$Attributes.value($Basics.toString(currentValue))]),
+      _U.list([]));
+   });
+   var string = F3(function (addr,width,currentValue) {
+      return A2($Html.input,
+      _U.list([A3($Html$Events.on,"input",targetValue($Json$Decode.string),$Signal.message(addr))
+              ,$Html$Attributes.value(currentValue)
+              ,$Html$Attributes.size(width)]),
+      _U.list([]));
+   });
+   var bool = F2(function (addr,currentValue) {
+      return A2($Html.input,
+      _U.list([$Html$Attributes.type$("checkbox")
+              ,A3($Html$Events.on,"change",A2($Json$Decode.at,_U.list(["target","checked"]),$Json$Decode.bool),$Signal.message(addr))
+              ,$Html$Attributes.checked(currentValue)]),
+      _U.list([$Html.text($Basics.toString(currentValue))]));
+   });
+   var view = F2(function (addr,model) {
+      return A2($Html.div,
+      _U.list([]),
+      _U.list([A2($Html.p,_U.list([]),_U.list([A2(bool,A2($Signal.forwardTo,addr,EditBool),model.b)]))
+              ,A2($Html.p,_U.list([]),_U.list([A3(string,A2($Signal.forwardTo,addr,EditString),3,model.str)]))
+              ,A2($Html.p,_U.list([]),_U.list([A2($int,A2($Signal.forwardTo,addr,EditInt),model.i)]))]));
+   });
+   var main = $StartApp$Simple.start({model: {i: 0,str: "",b: true},view: view,update: update});
+   return _elm.PrimitiveEditors.values = {_op: _op
+                                         ,bool: bool
+                                         ,string: string
+                                         ,$int: $int
+                                         ,targetValue: targetValue
+                                         ,selector: selector
+                                         ,Model: Model
+                                         ,EditString: EditString
+                                         ,EditBool: EditBool
+                                         ,EditInt: EditInt
+                                         ,view: view
+                                         ,update: update
+                                         ,main: main};
+};Elm.StepAdder = Elm.StepAdder || {};
+Elm.StepAdder.make = function (_elm) {
+   "use strict";
+   _elm.StepAdder = _elm.StepAdder || {};
+   if (_elm.StepAdder.values) return _elm.StepAdder.values;
+   var _U = Elm.Native.Utils.make(_elm),
+   $Basics = Elm.Basics.make(_elm),
+   $Debug = Elm.Debug.make(_elm),
+   $Html = Elm.Html.make(_elm),
+   $Html$Attributes = Elm.Html.Attributes.make(_elm),
+   $Html$Events = Elm.Html.Events.make(_elm),
+   $List = Elm.List.make(_elm),
+   $Maybe = Elm.Maybe.make(_elm),
+   $Model = Elm.Model.make(_elm),
+   $PrimitiveEditors = Elm.PrimitiveEditors.make(_elm),
+   $Result = Elm.Result.make(_elm),
+   $Signal = Elm.Signal.make(_elm),
+   $Util = Elm.Util.make(_elm);
+   var _op = {};
+   var UpdateResultName = function (a) {    return {ctor: "UpdateResultName",_0: a};};
+   var UpdateColumn = F2(function (a,b) {    return {ctor: "UpdateColumn",_0: a,_1: b};});
+   var UpdateConstant = F2(function (a,b) {    return {ctor: "UpdateConstant",_0: a,_1: b};});
+   var viewConcatArg = F4(function (addr,columns,idx,arg) {
+      var _p0 = arg;
+      if (_p0.ctor === "ConstantArg") {
+            return A3($PrimitiveEditors.string,A2($Signal.forwardTo,addr,UpdateConstant(idx)),3,_p0._0);
+         } else {
+            return A3($PrimitiveEditors.selector,A2($Signal.forwardTo,addr,UpdateColumn(idx)),columns,_p0._0);
+         }
+   });
+   var viewConcatEditor = F3(function (addr,columns,concat) {
+      return A2($Html.span,
+      _U.list([]),
+      A2($Basics._op["++"],
+      _U.list([$Html.text("concat ")]),
+      A2($Basics._op["++"],
+      A2($List.indexedMap,F2(function (idx,arg) {    return A4(viewConcatArg,addr,columns,idx,arg);}),concat.args),
+      A2($Basics._op["++"],
+      _U.list([$Html.text(" as ")]),
+      A2($Basics._op["++"],
+      _U.list([A3($PrimitiveEditors.string,A2($Signal.forwardTo,addr,UpdateResultName),3,concat.resultName)]),
+      _U.list([A2($Html.button,_U.list([]),_U.list([$Html.text("+ const")])),A2($Html.button,_U.list([]),_U.list([$Html.text("+ col")]))]))))));
+   });
+   var RemoveArg = function (a) {    return {ctor: "RemoveArg",_0: a};};
+   var AddConst = {ctor: "AddConst"};
+   var AddColumn = {ctor: "AddColumn"};
+   var ConcatAction = function (a) {    return {ctor: "ConcatAction",_0: a};};
+   var AddConcat = {ctor: "AddConcat"};
+   var Cancel = {ctor: "Cancel"};
+   var view = F3(function (addr,columns,model) {
+      var _p1 = model;
+      if (_p1.ctor === "Nothing") {
+            return A2($Html.button,_U.list([A2($Html$Events.onClick,addr,AddConcat)]),_U.list([$Html.text("+ Concat")]));
+         } else {
+            var _p2 = _p1._0;
+            return A2($Html.div,
+            _U.list([]),
+            _U.list([A3(viewConcatEditor,A2($Signal.forwardTo,addr,ConcatAction),columns,_p2._0)
+                    ,A2($Html.a,_U.list([$Html$Attributes.href("#"),A2($Html$Events.onClick,addr,Cancel)]),_U.list([$Html.text("cancel")]))]));
+         }
+   });
+   var ConstantArg = function (a) {    return {ctor: "ConstantArg",_0: a};};
+   var ColumnArg = function (a) {    return {ctor: "ColumnArg",_0: a};};
+   var Concat = F2(function (a,b) {    return {args: a,resultName: b};});
+   var ConcatEditor = function (a) {    return {ctor: "ConcatEditor",_0: a};};
+   var update = F3(function (action,columns,model) {
+      var _p3 = action;
+      switch (_p3.ctor)
+      {case "Cancel": return $Maybe.Nothing;
+         case "AddConcat": var _p4 = model;
+           if (_p4.ctor === "Nothing") {
+                 return $Maybe.Just(ConcatEditor({args: _U.list([ConstantArg("")
+                                                                ,ColumnArg(A2($Util.getMaybe,"no columns",$List.head(columns)))
+                                                                ,ConstantArg("")])
+                                                 ,resultName: A2($Basics._op["++"],"concat",A2($Util.getMaybe,"no columns",$List.head(columns)))}));
+              } else {
+                 return _U.crashCase("StepAdder",{start: {line: 57,column: 7},end: {line: 71,column: 42}},_p4)("unexpected action");
+              }
+         default: var _p6 = model;
+           if (_p6.ctor === "Nothing") {
+                 return _U.crashCase("StepAdder",{start: {line: 74,column: 7},end: {line: 116,column: 67}},_p6)("unexpected action");
+              } else {
+                 var _p9 = _p6._0._0;
+                 var _p8 = _p3._0;
+                 switch (_p8.ctor)
+                 {case "AddColumn": return $Maybe.Just(ConcatEditor(_U.update(_p9,
+                      {args: A2($Basics._op["++"],_p9.args,_U.list([ColumnArg(A2($Util.getMaybe,"no columns",$List.head(columns)))]))})));
+                    case "AddConst": return $Maybe.Just(ConcatEditor(_U.update(_p9,{args: A2($Basics._op["++"],_p9.args,_U.list([ConstantArg("")]))})));
+                    case "RemoveArg": return $Maybe.Just(ConcatEditor(_U.update(_p9,{args: A2($Util.removeAt,_p8._0,_p9.args)})));
+                    case "UpdateConstant": return $Maybe.Just(ConcatEditor(_U.update(_p9,
+                      {args: A2($Util.getMaybe,"invalid index",A3($Util.setAt,ConstantArg(_p8._1),_p8._0,_p9.args))})));
+                    case "UpdateColumn": return $Maybe.Just(ConcatEditor(_U.update(_p9,
+                      {args: A2($Util.getMaybe,"invalid index",A3($Util.setAt,ColumnArg(_p8._1),_p8._0,_p9.args))})));
+                    default: return $Maybe.Just(ConcatEditor(_U.update(_p9,{resultName: _p8._0})));}
+              }}
+   });
+   var initModel = $Maybe.Nothing;
+   return _elm.StepAdder.values = {_op: _op
+                                  ,initModel: initModel
+                                  ,ConcatEditor: ConcatEditor
+                                  ,Concat: Concat
+                                  ,ColumnArg: ColumnArg
+                                  ,ConstantArg: ConstantArg
+                                  ,Cancel: Cancel
+                                  ,AddConcat: AddConcat
+                                  ,ConcatAction: ConcatAction
+                                  ,AddColumn: AddColumn
+                                  ,AddConst: AddConst
+                                  ,RemoveArg: RemoveArg
+                                  ,UpdateConstant: UpdateConstant
+                                  ,UpdateColumn: UpdateColumn
+                                  ,UpdateResultName: UpdateResultName
+                                  ,update: update
+                                  ,viewConcatEditor: viewConcatEditor
+                                  ,viewConcatArg: viewConcatArg
+                                  ,view: view};
 };Elm.Main = Elm.Main || {};
 Elm.Main.make = function (_elm) {
    "use strict";
@@ -11243,126 +11870,309 @@ Elm.Main.make = function (_elm) {
    var _U = Elm.Native.Utils.make(_elm),
    $Basics = Elm.Basics.make(_elm),
    $Debug = Elm.Debug.make(_elm),
+   $Dict = Elm.Dict.make(_elm),
+   $Effects = Elm.Effects.make(_elm),
    $Html = Elm.Html.make(_elm),
    $Html$Attributes = Elm.Html.Attributes.make(_elm),
    $Html$Events = Elm.Html.Events.make(_elm),
    $Html$Events$Extra = Elm.Html.Events.Extra.make(_elm),
+   $Json$Decode = Elm.Json.Decode.make(_elm),
    $List = Elm.List.make(_elm),
    $Maybe = Elm.Maybe.make(_elm),
    $Model = Elm.Model.make(_elm),
    $Result = Elm.Result.make(_elm),
    $Signal = Elm.Signal.make(_elm),
-   $StartApp$Simple = Elm.StartApp.Simple.make(_elm),
+   $StartApp = Elm.StartApp.make(_elm),
+   $StepAdder = Elm.StepAdder.make(_elm),
    $String = Elm.String.make(_elm),
+   $Table = Elm.Table.make(_elm),
+   $Task = Elm.Task.make(_elm),
    $Util = Elm.Util.make(_elm);
    var _op = {};
-   var update = F2(function (action,model) {
-      var _p0 = action;
-      if (_p0.ctor === "AddStep") {
-            return _U.update(model,{transformScript: $Model.smooshScript(A2($Basics._op["++"],model.transformScript,_U.list([_p0._0])))});
+   var updateHistogramsMailbox = $Signal.mailbox({ctor: "_Tuple2",_0: _U.list([]),_1: _U.list([])});
+   var updateHistograms = Elm.Native.Port.make(_elm).outboundSignal("updateHistograms",
+   function (v) {
+      return [Elm.Native.List.make(_elm).toArray(v._0).map(function (v) {    return v;})
+             ,Elm.Native.List.make(_elm).toArray(v._1).map(function (v) {    return [v._0,v._1];})];
+   },
+   updateHistogramsMailbox.signal);
+   var createHistogramsMailbox = $Signal.mailbox(_U.list([]));
+   var createHistograms = Elm.Native.Port.make(_elm).outboundSignal("createHistograms",
+   function (v) {
+      return Elm.Native.List.make(_elm).toArray(v).map(function (v) {    return v;});
+   },
+   createHistogramsMailbox.signal);
+   var phoenixDatasetAggregate = Elm.Native.Port.make(_elm).inboundSignal("phoenixDatasetAggregate",
+   "List\n    ( Model.ColumnName\n    , Json.Decode.Value\n    )",
+   function (v) {
+      return typeof v === "object" && v instanceof Array ? Elm.Native.List.make(_elm).fromArray(v.map(function (v) {
+         return typeof v === "object" && v instanceof Array ? {ctor: "_Tuple2"
+                                                              ,_0: typeof v[0] === "string" || typeof v[0] === "object" && v[0] instanceof String ? v[0] : _U.badPort("a string",
+                                                              v[0])
+                                                              ,_1: v[1]} : _U.badPort("an array",v);
+      })) : _U.badPort("an array",v);
+   });
+   var phoenixDatasetTransform = Elm.Native.Port.make(_elm).inboundSignal("phoenixDatasetTransform",
+   "List\n    (\n    List\n        ( Model.ColumnName, String )\n    )",
+   function (v) {
+      return typeof v === "object" && v instanceof Array ? Elm.Native.List.make(_elm).fromArray(v.map(function (v) {
+         return typeof v === "object" && v instanceof Array ? Elm.Native.List.make(_elm).fromArray(v.map(function (v) {
+            return typeof v === "object" && v instanceof Array ? {ctor: "_Tuple2"
+                                                                 ,_0: typeof v[0] === "string" || typeof v[0] === "object" && v[0] instanceof String ? v[0] : _U.badPort("a string",
+                                                                 v[0])
+                                                                 ,_1: typeof v[1] === "string" || typeof v[1] === "object" && v[1] instanceof String ? v[1] : _U.badPort("a string",
+                                                                 v[1])} : _U.badPort("an array",v);
+         })) : _U.badPort("an array",v);
+      })) : _U.badPort("an array",v);
+   });
+   var phoenixDatasetErrors = Elm.Native.Port.make(_elm).inboundSignal("phoenixDatasetErrors",
+   "List String",
+   function (v) {
+      return typeof v === "object" && v instanceof Array ? Elm.Native.List.make(_elm).fromArray(v.map(function (v) {
+         return typeof v === "string" || typeof v === "object" && v instanceof String ? v : _U.badPort("a string",v);
+      })) : _U.badPort("an array",v);
+   });
+   var phoenixDatasetProgress = Elm.Native.Port.make(_elm).inboundSignal("phoenixDatasetProgress",
+   "Int",
+   function (v) {
+      return typeof v === "number" && isFinite(v) && Math.floor(v) === v ? v : _U.badPort("an integer",v);
+   });
+   var columnNames = function (model) {
+      return A2($Maybe.withDefault,
+      _U.list([]),
+      A2($Maybe.map,function (_p0) {    return function (_) {    return _.columnNames;}($Basics.snd(_p0));},model.table));
+   };
+   var viewErrors = function (model) {
+      return A2($Html.ul,
+      _U.list([$Html$Attributes.$class("errors")]),
+      A2($List.map,function (error) {    return A2($Html.li,_U.list([]),_U.list([$Html.text(error)]));},model.errors));
+   };
+   var viewTable = F2(function (addr,model) {
+      var _p1 = model.table;
+      if (_p1.ctor === "Nothing") {
+            return A2($Html.p,_U.list([]),_U.list([$Html.text("No results yet")]));
          } else {
-            return _U.update(model,{transformScript: $Model.smooshScript(A2($Util.removeAt,_p0._0,model.transformScript))});
+            var _p2 = _p1._0._1;
+            var rows = A2($List.map,
+            function (row) {
+               return A2($Html.tr,_U.list([]),A2($List.map,function (col) {    return A2($Html.td,_U.list([]),_U.list([$Html.text(col)]));},row));
+            },
+            _p2.rows);
+            var header = A2($List.map,function (name) {    return A2($Html.th,_U.list([]),_U.list([$Html.text(name)]));},_p2.columnNames);
+            return A2($Html.table,
+            _U.list([]),
+            _U.list([A2($Html.thead,_U.list([]),_U.list([A2($Html.tr,_U.list([]),header)]))
+                    ,A2($Html.tbody,_U.list([]),rows)
+                    ,$Html.text($Basics.toString(model.aggregates))]));
          }
    });
-   var initModel = {transformScript: _U.list([])};
+   var viewProgress = function (model) {
+      var badRows = $List.length(model.errors);
+      var goodRows = model.rowsProcessed;
+      var totalRows = goodRows + badRows;
+      return $Html.text(A2($Basics._op["++"],
+      $Basics.toString(goodRows),
+      A2($Basics._op["++"],
+      " good rows + ",
+      A2($Basics._op["++"],$Basics.toString(badRows),A2($Basics._op["++"]," bad rows = ",A2($Basics._op["++"],$Basics.toString(totalRows)," total"))))));
+   };
+   var initModel = {transformScript: _U.list([])
+                   ,errors: _U.list([])
+                   ,table: $Maybe.Nothing
+                   ,rowsProcessed: 0
+                   ,aggregates: _U.list([])
+                   ,stepAdderState: $StepAdder.initModel};
    var env = $Model.makeEnv(A2($String.split,
    ",",
    "ID,ID,Case Number,Date,Block,IUCR,Primary Type,Description,Location Description,Arrest,Domestic,Beat,District,Ward,Community Area,FBI Code,X Coordinate,Y Coordinate,Year,Updated On,Latitude,Longitude,Location"));
+   var AggregateUpdate = function (a) {    return {ctor: "AggregateUpdate",_0: a};};
+   var TransformChunkEvent = function (a) {    return {ctor: "TransformChunkEvent",_0: a};};
+   var ErrorsEvent = function (a) {    return {ctor: "ErrorsEvent",_0: a};};
+   var ProgressEvent = function (a) {    return {ctor: "ProgressEvent",_0: a};};
+   var NoOp = {ctor: "NoOp"};
+   var update = F2(function (action,model) {
+      var _p3 = action;
+      switch (_p3.ctor)
+      {case "NoOp": return {ctor: "_Tuple2",_0: model,_1: $Effects.none};
+         case "AddStep": return {ctor: "_Tuple2"
+                                ,_0: _U.update(model,{transformScript: $Model.smooshScript(A2($Basics._op["++"],model.transformScript,_U.list([_p3._0])))})
+                                ,_1: $Effects.none};
+         case "RemoveStep": return {ctor: "_Tuple2"
+                                   ,_0: _U.update(model,{transformScript: $Model.smooshScript(A2($Util.removeAt,_p3._0,model.transformScript))})
+                                   ,_1: $Effects.none};
+         case "StepAdderAction": return {ctor: "_Tuple2"
+                                        ,_0: _U.update(model,{stepAdderState: A3($StepAdder.update,_p3._0,columnNames(model),model.stepAdderState)})
+                                        ,_1: $Effects.none};
+         default: var _p4 = _p3._0;
+           switch (_p4.ctor)
+           {case "ProgressEvent": return {ctor: "_Tuple2",_0: _U.update(model,{rowsProcessed: A2($Basics.max,model.rowsProcessed,_p4._0)}),_1: $Effects.none};
+              case "ErrorsEvent": return {ctor: "_Tuple2",_0: _U.update(model,{errors: A2($Basics._op["++"],model.errors,_p4._0)}),_1: $Effects.none};
+              case "TransformChunkEvent": var _p7 = _p4._0;
+                var _p5 = function () {
+                   var _p6 = model.table;
+                   if (_p6.ctor === "Just") {
+                         return {ctor: "_Tuple2"
+                                ,_0: $Maybe.Just(function (newTable) {
+                                   return {ctor: "_Tuple2",_0: _p6._0._0,_1: newTable};
+                                }(A2($Table.addChunk,_p7,_p6._0._1)))
+                                ,_1: $Effects.none};
+                      } else {
+                         var maybeTable = $Table.fromFirstChunk(_p7);
+                         return {ctor: "_Tuple2"
+                                ,_0: A2($Maybe.map,function (table) {    return {ctor: "_Tuple2",_0: model.transformScript,_1: table};},maybeTable)
+                                ,_1: $Effects.task(A2($Task.map,$Basics.always(NoOp),A2($Signal.send,createHistogramsMailbox.address,columnNames(model))))};
+                      }
+                }();
+                var newTable = _p5._0;
+                var effects = _p5._1;
+                return {ctor: "_Tuple2",_0: _U.update(model,{table: newTable}),_1: effects};
+              default: var _p9 = _p4._0;
+                return {ctor: "_Tuple2"
+                       ,_0: _U.update(model,{aggregates: _p9})
+                       ,_1: $Effects.task(A2($Task.map,
+                       $Basics.always(NoOp),
+                       A2($Signal.send,
+                       updateHistogramsMailbox.address,
+                       {ctor: "_Tuple2"
+                       ,_0: A2($Maybe.withDefault,
+                       _U.list([]),
+                       A2($Maybe.map,function (_p8) {    return function (_) {    return _.columnNames;}($Basics.snd(_p8));},model.table))
+                       ,_1: _p9})))};}}
+   });
+   var ServerEvent = function (a) {    return {ctor: "ServerEvent",_0: a};};
+   var StepAdderAction = function (a) {    return {ctor: "StepAdderAction",_0: a};};
    var RemoveStep = function (a) {    return {ctor: "RemoveStep",_0: a};};
    var viewScript = F2(function (addr,scriptWithErrors) {
       var closeButton = function (idx) {    return A2($Html.button,_U.list([A2($Html$Events.onClick,addr,RemoveStep(idx))]),_U.list([$Html.text("x")]));};
-      var viewStep = F2(function (idx,_p1) {
-         var _p2 = _p1;
-         var _p4 = _p2._0;
-         var _p3 = _p2._1;
-         if (_p3.ctor === "Just") {
+      var viewStep = F2(function (idx,_p10) {
+         var _p11 = _p10;
+         var _p13 = _p11._0;
+         var _p12 = _p11._1;
+         if (_p12.ctor === "Just") {
                return A2($Html.li,
                _U.list([]),
                _U.list([closeButton(idx)
                        ,$Html.text(" ")
-                       ,A2($Html.span,_U.list([]),_U.list([$Html.text($Basics.toString(_p4))]))
+                       ,A2($Html.span,_U.list([]),_U.list([$Html.text($Basics.toString(_p13))]))
                        ,$Html.text(" ")
                        ,A2($Html.span,
                        _U.list([$Html$Attributes.style(_U.list([{ctor: "_Tuple2",_0: "color",_1: "red"}]))]),
-                       _U.list([$Html.text($Basics.toString(_p3._0))]))]));
+                       _U.list([$Html.text($Basics.toString(_p12._0))]))]));
             } else {
-               return A2($Html.li,_U.list([]),_U.list([closeButton(idx),$Html.text(" "),$Html.text($Basics.toString(_p4))]));
+               return A2($Html.li,_U.list([]),_U.list([closeButton(idx),$Html.text(" "),$Html.text($Basics.toString(_p13))]));
             }
       });
-      return A2($Html.ul,_U.list([]),A2($List.indexedMap,viewStep,scriptWithErrors));
+      var _p14 = scriptWithErrors;
+      if (_p14.ctor === "[]") {
+            return A2($Html.p,
+            _U.list([$Html$Attributes.style(_U.list([{ctor: "_Tuple2",_0: "font-style",_1: "italic"}]))]),
+            _U.list([$Html.text("identity transform")]));
+         } else {
+            return A2($Html.ul,_U.list([]),A2($List.indexedMap,viewStep,scriptWithErrors));
+         }
    });
+   var viewTransformEditor = F2(function (addr,model) {
+      var _p15 = A2($Model.stepsToMapping,model.transformScript,env);
+      var stepErrors = _p15._0;
+      var mapping = _p15._1;
+      return A2($Html.div,
+      _U.list([]),
+      _U.list([A2(viewScript,addr,A3($List.map2,F2(function (v0,v1) {    return {ctor: "_Tuple2",_0: v0,_1: v1};}),model.transformScript,stepErrors))
+              ,A3($StepAdder.view,A2($Signal.forwardTo,addr,StepAdderAction),columnNames(model),model.stepAdderState)]));
+   });
+   var view = F2(function (addr,model) {
+      return A2($Html.div,
+      _U.list([]),
+      _U.list([A2($Html.div,
+              _U.list([$Html$Attributes.$class("pure-g")]),
+              _U.list([A2($Html.div,
+                      _U.list([$Html$Attributes.$class("pure-u-1-3")]),
+                      _U.list([A2(viewTransformEditor,addr,model)
+                              ,A2($Html.button,
+                              _U.list([$Html$Attributes.disabled(A2($Maybe.withDefault,
+                              false,
+                              A2($Maybe.map,function (_p16) {    var _p17 = _p16;return _U.eq(_p17._0,model.transformScript);},model.table)))]),
+                              _U.list([$Html.text("Save Transform & Get Preview")]))]))
+                      ,A2($Html.div,_U.list([$Html$Attributes.$class("pure-u-1-3"),$Html$Attributes.id("errors")]),_U.list([viewErrors(model)]))
+                      ,A2($Html.div,_U.list([$Html$Attributes.$class("pure-u-1-3"),$Html$Attributes.id("upload")]),_U.list([]))
+                      ,A2($Html.div,_U.list([$Html$Attributes.$class("pure-u-1-1")]),_U.list([viewProgress(model)]))]))
+              ,A2($Html.table,_U.list([$Html$Attributes.id("histograms")]),_U.list([]))
+              ,A2($Html.div,_U.list([$Html$Attributes.id("results")]),_U.list([A2(viewTable,addr,model)]))]));
+   });
+   var app = $StartApp.start({init: {ctor: "_Tuple2",_0: initModel,_1: $Effects.none}
+                             ,view: view
+                             ,update: update
+                             ,inputs: _U.list([A2($Signal.map,function (_p18) {    return ServerEvent(ProgressEvent(_p18));},phoenixDatasetProgress)
+                                              ,A2($Signal.map,function (_p19) {    return ServerEvent(ErrorsEvent(_p19));},phoenixDatasetErrors)
+                                              ,A2($Signal.map,function (_p20) {    return ServerEvent(TransformChunkEvent(_p20));},phoenixDatasetTransform)
+                                              ,A2($Signal.map,function (_p21) {    return ServerEvent(AggregateUpdate(_p21));},phoenixDatasetAggregate)])});
+   var main = app.html;
+   var tasks = Elm.Native.Task.make(_elm).performSignal("tasks",app.tasks);
    var AddStep = function (a) {    return {ctor: "AddStep",_0: a};};
-   var viewColumn = F4(function (addr,idx,length,_p5) {
-      var _p6 = _p5;
-      var _p7 = _p6._0;
+   var viewColumn = F4(function (addr,idx,length,_p22) {
+      var _p23 = _p22;
+      var _p24 = _p23._0;
       return A2($Html.span,
       _U.list([]),
-      _U.list([A2($Html.button,_U.list([A2($Html$Events.onClick,addr,AddStep($Model.DropColumn(_p7)))]),_U.list([$Html.text("x")]))
+      _U.list([A2($Html.button,_U.list([A2($Html$Events.onClick,addr,AddStep($Model.DropColumn(_p24)))]),_U.list([$Html.text("x")]))
               ,A2($Html.button,
-              _U.list([A2($Html$Events.onClick,addr,AddStep(A2($Model.MoveColumnToPosition,_p7,idx - 1))),$Html$Attributes.disabled(_U.eq(idx,0))]),
+              _U.list([A2($Html$Events.onClick,addr,AddStep(A2($Model.MoveColumnToPosition,_p24,idx - 1))),$Html$Attributes.disabled(_U.eq(idx,0))]),
               _U.list([$Html.text("^")]))
               ,A2($Html.button,
-              _U.list([A2($Html$Events.onClick,addr,AddStep(A2($Model.MoveColumnToPosition,_p7,idx + 1))),$Html$Attributes.disabled(_U.eq(idx,length - 1))]),
+              _U.list([A2($Html$Events.onClick,addr,AddStep(A2($Model.MoveColumnToPosition,_p24,idx + 1))),$Html$Attributes.disabled(_U.eq(idx,length - 1))]),
               _U.list([$Html.text("v")]))
               ,$Html.text(" ")
               ,A2($Html.input,
-              _U.list([$Html$Attributes.value(_p7)
+              _U.list([$Html$Attributes.value(_p24)
                       ,$Html$Attributes.style(_U.list([{ctor: "_Tuple2",_0: "font-weight",_1: "bold"}]))
-                      ,A2($Html$Events$Extra.onInput,addr,function (newName) {    return AddStep(A2($Model.RenameColumn,_p7,newName));})
+                      ,A2($Html$Events$Extra.onInput,addr,function (newName) {    return AddStep(A2($Model.RenameColumn,_p24,newName));})
                       ,$Html$Attributes.size(20)]),
               _U.list([]))
               ,$Html.text(" ")
-              ,$Html.text($Basics.toString(_p6._1))
+              ,$Html.text($Basics.toString(_p23._1))
               ,$Html.text(": ")
               ,A2($Html.span,
               _U.list([$Html$Attributes.style(_U.list([{ctor: "_Tuple2",_0: "font-style",_1: "italic"}]))]),
-              _U.list([$Html.text($Basics.toString(_p6._2))]))]));
+              _U.list([$Html.text($Basics.toString(_p23._2))]))]));
    });
    var viewColumns = F2(function (addr,schema) {
       var numCols = $List.length(schema);
       return A2($Html.ul,
       _U.list([]),
       A2($List.indexedMap,
-      F2(function (idx,_p8) {
-         var _p9 = _p8;
-         var _p10 = _p9._1;
-         return A2($Html.li,_U.list([]),_U.list([A4(viewColumn,addr,idx,numCols,{ctor: "_Tuple3",_0: _p9._0,_1: _p10,_2: A2($Model.exprType,env,_p10)})]));
+      F2(function (idx,_p25) {
+         var _p26 = _p25;
+         var _p27 = _p26._1;
+         return A2($Html.li,_U.list([]),_U.list([A4(viewColumn,addr,idx,numCols,{ctor: "_Tuple3",_0: _p26._0,_1: _p27,_2: A2($Model.exprType,env,_p27)})]));
       }),
       schema));
    });
-   var view = F2(function (addr,model) {
-      var _p11 = A2($Model.stepsToMapping,model.transformScript,env);
-      var stepErrors = _p11._0;
-      var mapping = _p11._1;
-      return A2($Html.table,
-      _U.list([]),
-      _U.list([A2($Html.tr,
-              _U.list([]),
-              _U.list([A2($Html.td,_U.list([]),_U.list([A2($Html.h1,_U.list([]),_U.list([$Html.text("Columns")]))]))
-                      ,A2($Html.td,_U.list([]),_U.list([A2($Html.h1,_U.list([]),_U.list([$Html.text("Transform Script")]))]))]))
-              ,A2($Html.tr,
-              _U.list([]),
-              _U.list([A2($Html.td,
-                      _U.list([$Html$Attributes.style(_U.list([{ctor: "_Tuple2",_0: "vertical-align",_1: "top"}]))]),
-                      _U.list([A2(viewColumns,addr,mapping)]))
-                      ,A2($Html.td,
-                      _U.list([$Html$Attributes.style(_U.list([{ctor: "_Tuple2",_0: "vertical-align",_1: "top"}]))]),
-                      _U.list([A2(viewScript,
-                      addr,
-                      A3($List.map2,F2(function (v0,v1) {    return {ctor: "_Tuple2",_0: v0,_1: v1};}),model.transformScript,stepErrors))]))]))]));
-   });
-   var main = $StartApp$Simple.start({model: initModel,view: view,update: update});
-   var Model = function (a) {    return {transformScript: a};};
+   var Model = F6(function (a,b,c,d,e,f) {    return {transformScript: a,errors: b,table: c,rowsProcessed: d,aggregates: e,stepAdderState: f};});
    return _elm.Main.values = {_op: _op
                              ,Model: Model
                              ,AddStep: AddStep
                              ,RemoveStep: RemoveStep
+                             ,StepAdderAction: StepAdderAction
+                             ,ServerEvent: ServerEvent
+                             ,NoOp: NoOp
+                             ,ProgressEvent: ProgressEvent
+                             ,ErrorsEvent: ErrorsEvent
+                             ,TransformChunkEvent: TransformChunkEvent
+                             ,AggregateUpdate: AggregateUpdate
                              ,env: env
                              ,initModel: initModel
                              ,view: view
+                             ,viewProgress: viewProgress
+                             ,viewTable: viewTable
+                             ,viewErrors: viewErrors
+                             ,viewTransformEditor: viewTransformEditor
                              ,viewScript: viewScript
                              ,viewColumns: viewColumns
                              ,viewColumn: viewColumn
                              ,update: update
-                             ,main: main};
+                             ,columnNames: columnNames
+                             ,app: app
+                             ,main: main
+                             ,createHistogramsMailbox: createHistogramsMailbox
+                             ,updateHistogramsMailbox: updateHistogramsMailbox};
 };</script></head><body><script type="text/javascript">Elm.fullscreen(Elm.Main)</script></body></html>

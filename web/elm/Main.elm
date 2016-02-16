@@ -4,6 +4,7 @@ import String
 import Task exposing (Task)
 import Dict exposing (Dict)
 import Json.Decode as JsDec
+import Json.Encode as JsEnc
 
 import Html exposing (..)
 import Html.Attributes exposing (..)
@@ -161,6 +162,9 @@ viewTransformEditor addr model =
               (Signal.forwardTo addr StepAdderAction)
               (columnNames model)
               model.stepAdderState
+      , pre
+          [style [("white-space", "pre-wrap")]]
+          [stepsToNestedFuncs model.transformScript |> encodeNestedFuncs |> JsEnc.encode 4 |> text]
       ]
 
 

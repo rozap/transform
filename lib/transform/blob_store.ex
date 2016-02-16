@@ -7,7 +7,11 @@ defmodule Transform.BlobStore do
     |> CSV.encode
     |> Enum.join
 
-    :erlcloud.put_object(Application.get_env(:transform, :blobs)[:bucket], relative, encoded)
+    :erlcloud_s3.put_object(
+      to_char_list(Application.get_env(:transform, :blobs)[:bucket]),
+      to_char_list(relative),
+      encoded
+    )
 
     relative
   end
@@ -21,7 +25,11 @@ defmodule Transform.BlobStore do
   end
 
   def read!(relative) do
-    :erlcloud.get_object(Application.get_env(:transform, :blobs)[:bucket], relative)
+    :erlcloud_s3.get_object(
+      to_char_list(Application.get_env(:transform, :blobs)[:bucket]),
+      to_char_list(relative)
+    )[:content]
+    |> String.split("\n")
   end
 
 end

@@ -53,7 +53,7 @@ defmodule Transform.Mixfile do
      {:poolboy, "~> 1.5"},
      {:calendar, "~> 0.12.4"},
      {:erlzk, "~> 0.6.1"},
-     {:erlcoud, git: "https://github.com/erlcloud/erlcloud", tag: "0.13.0"}
+     {:erlcloud, git: "https://github.com/erlcloud/erlcloud", tag: "0.13.0"}
    ]
   end
 

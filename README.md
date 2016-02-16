@@ -5,7 +5,7 @@
 - **Transform script frontend:** Kick off a job from the browser by specifying a transform script and uploading a file.
 - **Fast preview:** streams first N (configurable) rows to the browser, while the rest is still uploading and transforming.
 - **Dancing histograms:** the backend maintains streaming histogram for each column and sends updates to the browser.
-- Writes basic table chunks to **S3**, allowing job to be rerun (e.g. with a different transform or because of a failure) without re-uploading or re-decoding.
+- Writes basic table chunks to **S3**, (TODO: allowing job to be rerun (e.g. with a different transform or because of a failure) without re-uploading or re-decoding)
 - **Transform retry / fault tolerance:** A record is written to Postgres for each basic table chunk received, and it is then marked done when it has been transformed. The `ChunkHerder` polls the database for chunks which have failed to transform, and retries them a configurable number of times. Because of this, if the entire system is killed and restarted, running transforms will finish. (TODO: write aggregator state to a durable store).
 - **Backpressure and exponential backoff:** The basic table and transform phases maintain configurable "high water marks" for their work queues, and the stages upstream of them implement exponential backoff. This backpressure extends all the way to reading from the upload socket, ensuring that the memory usage of these stages will remain bounded.
 - **Multi-node:** Start up multiple Erlang VMs (see below), each of which runs the phoenix app. If you start a job in the UI served from one, but view that job with the UI served by another, the UI will update since events are being relayed between VMs.

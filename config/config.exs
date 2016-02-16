@@ -28,14 +28,6 @@ config :phoenix, :generators,
   migration: true,
   binary_id: false
 
-config :transform, Transform.Repo,
-  adapter: Ecto.Adapters.Postgres,
-  username: "postgres",
-  password: "postgres",
-  database: "transform_dev",
-  hostname: "localhost",
-  pool_size: 10
-
 config :transform, :workers,
   executor: [
     count: 8,
@@ -49,3 +41,6 @@ config :transform, :workers,
 config :transform, :herder,
   interval: 60,
   max_attempts: 4
+
+config :transform, :blobs,
+  bucket: "publishing-stuff"

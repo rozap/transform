@@ -29,3 +29,13 @@ Start a node named plato
 
 You should see log messages from plato indicating that it found socrates and successfully pinged it, which means both the nodes know about each other, and the pg2 groups will be linked.
 
+### Dockerizing
+
+``` docker build --tag=neato```
+
+If the output is `81d74957d398`, then run
+```
+docker run -p 4000:4000 -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" -it 81d74957d398 iex -S mix phoenix.server
+```
+
+Make sure you have the aws creds set

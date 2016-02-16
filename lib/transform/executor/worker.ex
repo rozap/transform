@@ -9,6 +9,7 @@ defmodule Transform.Executor.Worker do
   alias Transform.BlobStore
   alias Transform.Backoff
 
+
   def start_link(args) do
     hwm = Application.get_env(:transform, :workers)[:executor][:high_water_mark]
     {:ok, pid} = Workex.start_link(__MODULE__, args, max_size: hwm)
@@ -41,10 +42,15 @@ defmodule Transform.Executor.Worker do
     |> Enum.into([])
   end
 
-  defp transform_row(_, columns, row) when length(row) != length(columns) do
-    {:error, "Invalid row size #{length row} does not match expected size #{length columns}"}
+  defp transform_row(_, _, [""], _, _), do: :ignore
+  defp transform_row(_, columns, row, chunk, index) when length(row) != length(columns) do
+    # This won't work if we vary the chunk size, but we don't...yet. Also plus one because
+    # of the header
+    row_num = (chunk.sequence_number * Transform.Api.BasicTable.chunk_size) + index + 1
+    Logger.warn("Error on #{inspect row}")
+    {:error, "Invalid row size #{length row} does not match expected size #{length columns} on row #{row_num}"}
   end
-  defp transform_row(func, columns, row) do
+  defp transform_row(func, columns, row, _, _) do
     datum = Enum.zip(columns, row) |> Enum.into(%{})
 
     case func.({:ok, datum}) do
@@ -79,10 +85,12 @@ defmodule Transform.Executor.Worker do
     result = case Compiler.get(job) do
       {:ok, func} ->
         rows
-        |> Enum.map(fn row -> transform_row(func, basic_table.meta.columns, row) end)
+        |> Enum.with_index
+        |> Enum.map(fn {row, index} -> transform_row(func, basic_table.meta.columns, row, chunk, index) end)
         |> Enum.group_by(fn
           {:ok, _} -> :transformed
           {:error, _} -> :errors
+          :ignore -> :ignore
         end)
 
       {:error, _} -> %{errors: [{:error, "no transform found for #{inspect job}"}]}

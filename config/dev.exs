@@ -35,9 +35,15 @@ config :phoenix, :stacktrace_depth, 20
 # config :transform, :blobs,
 #   path: "/tmp"
 
-config :transform, :blobs,
-  bucket: "publishing-stuff"
 
 config :transform, :zookeeper,
   address: :"localhost",
   port: 2181
+
+config :transform, Transform.Repo,
+  adapter: Ecto.Adapters.Postgres,
+  username: "postgres",
+  password: "postgres",
+  database: "transform_dev",
+  hostname: "localhost",
+  pool_size: 10

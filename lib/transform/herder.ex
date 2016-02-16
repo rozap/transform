@@ -18,7 +18,7 @@ defmodule Transform.Herder do
 
   def handle_info(:tick, state) do
     now = :calendar.local_time
-    max_attempts = Application.get_env(:transform, :herder)[:attempts]
+    max_attempts = Application.get_env(:transform, :herder)[:max_attempts]
     timeout = Application.get_env(:transform, :herder)[:interval]
 
     cutoff = Calendar.DateTime.now_utc

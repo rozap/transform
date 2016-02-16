@@ -107,6 +107,7 @@ $(() => {
     phoenixDatasetTransform: [],
     phoenixDatasetAggregate: []
   });
+  // phoenix channels => elm
   channel.on("dataset:progress", (evt) => elmModule.ports.phoenixDatasetProgress.send(evt.rows));
   channel.on("dataset:errors", (evt) => elmModule.ports.phoenixDatasetErrors.send(evt.result));
   channel.on("dataset:transform", (evt) =>
@@ -119,15 +120,30 @@ $(() => {
   channel.on("dataset:aggregate", (evt) =>
     elmModule.ports.phoenixDatasetAggregate.send(
       Object.keys(evt).map((colName) =>
-        [
-          colName,
-          Object.keys(evt[colName]).map((value) =>
-            [value, evt[colName][value]]
-          )
-        ]
+        [colName, evt[colName]]
       )
     )
-  )
+  );
+  // elm => histogram stuff
+  let histograms = {};
+  elmModule.ports.createHistograms.subscribe((colNames) => {
+    console.log('make histograms')
+    colNames.map((name) => {
+      histograms[name] = new Histogram(name);
+    });
+  });
+  elmModule.ports.updateHistograms.subscribe(([columns, newHistos]) => {
+    console.log('update histograms');
+    let agg = {};
+    newHistos.forEach(([name, histo]) => {
+      agg[name] = histo;
+    });
+    var widths = $('#histograms').find('th').map((i, e) => $(e).width());
+    _.zip(columns, widths).forEach(([col, width]) => {
+      var values = agg[col];
+      if(histograms[col]) histograms[col].update(values, width);
+    });
+  });
 
   new UploadView(datasetId);
 });

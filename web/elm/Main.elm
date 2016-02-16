@@ -3,6 +3,7 @@ module Main where
 import String
 import Task exposing (Task)
 import Dict exposing (Dict)
+import Json.Decode as JsDec
 
 import Html exposing (..)
 import Html.Attributes exposing (..)
@@ -21,7 +22,7 @@ type alias Model =
   , errors : List String
   , table : Maybe Table
   , rowsProcessed : Int
-  , aggregates : Dict ColumnName Histogram
+  , aggregates : List (ColumnName, JsDec.Value)
   }
 
 
@@ -29,13 +30,14 @@ type Action
   = AddStep Step
   | RemoveStep Int -- index
   | ServerEvent ServerEvent
+  | NoOp
 
 
 type ServerEvent
   = ProgressEvent Int
   | ErrorsEvent (List String)
   | TransformChunkEvent (List (List (ColumnName, String)))
-  | AggregateUpdate (List (ColumnName, List (String, Int)))
+  | AggregateUpdate (List (ColumnName, JsDec.Value))
 
 
 type alias Histogram =
@@ -52,7 +54,7 @@ initModel =
   , errors = []
   , table = Nothing
   , rowsProcessed = 0
-  , aggregates = Dict.empty
+  , aggregates = []
   }
 
 
@@ -73,6 +75,7 @@ view addr model =
       , div [ class "pure-u-1-1" ]
           [ viewProgress model ]
       ]
+    , table [ id "histograms" ] []
     , div [ id "results" ] [ viewTable addr model ]
     --, viewTransformEditor addr model
     ]
@@ -242,6 +245,9 @@ viewColumn addr idx length (name, expr, typeResult) =
 update : Action -> Model -> (Model, Effects Action)
 update action model =
   case action of
+    NoOp ->
+      (model, Effects.none)
+
     AddStep step ->
       ( { model | transformScript = model.transformScript ++ [step] |> smooshScript }
       , Effects.none
@@ -266,28 +272,40 @@ update action model =
 
         TransformChunkEvent chunk ->
           let
-            newTable =
+            (newTable, effects) =
               case model.table of
                 Just table ->
-                  table |> Table.addChunk chunk |> Just
+                  ( table |> Table.addChunk chunk |> Just
+                  , Effects.none
+                  )
 
                 Nothing ->
-                  Table.fromFirstChunk chunk
+                  let
+                    table =
+                      Table.fromFirstChunk chunk
+                  in
+                    ( table
+                    , Signal.send
+                        createHistogramsMailbox.address
+                        (table |> Maybe.map .columnNames |> Maybe.withDefault [])
+                      |> Task.map (always NoOp)
+                      |> Effects.task
+                    )
           in
-            ( { model | table = newTable }
-            , Effects.none
+            ( {model | table = newTable}
+            , effects
             )
 
-        AggregateUpdate updatedAggs ->
-          let
-            newAggs =
-              updatedAggs
-              |> List.map (\(colName, histo) -> (colName, Dict.fromList histo))
-              |> Dict.fromList
-          in
-            ( { model | aggregates = newAggs }
-            , Effects.none
-            )
+        AggregateUpdate newAggs ->
+          ( { model | aggregates = newAggs }
+          , Signal.send
+              updateHistogramsMailbox.address
+              ( model.table |> Maybe.map .columnNames |> Maybe.withDefault []
+              , newAggs
+              )
+            |> Task.map (always NoOp)
+            |> Effects.task
+          )
 
 
 app =
@@ -319,4 +337,20 @@ port phoenixDatasetErrors : Signal (List String)
 
 port phoenixDatasetTransform : Signal (List (List (ColumnName, String)))
 
-port phoenixDatasetAggregate : Signal (List (ColumnName, List (String, Int)))
+port phoenixDatasetAggregate : Signal (List (ColumnName, JsDec.Value))
+
+
+createHistogramsMailbox =
+  Signal.mailbox []
+
+port createHistograms : Signal (List ColumnName)
+port createHistograms =
+  createHistogramsMailbox.signal
+
+
+updateHistogramsMailbox =
+  Signal.mailbox ([], [])
+
+port updateHistograms : Signal (List ColumnName, List (ColumnName, JsDec.Value))
+port updateHistograms =
+  updateHistogramsMailbox.signal

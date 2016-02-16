@@ -333,7 +333,9 @@ update action model =
                         |> Maybe.map (\table -> (model.transformScript, table))
                     , Signal.send
                         createHistogramsMailbox.address
-                        (columnNames model)
+                        (maybeTable
+                          |> Maybe.map .columnNames
+                          |> Maybe.withDefault [])
                       |> Task.map (always NoOp)
                       |> Effects.task
                     )

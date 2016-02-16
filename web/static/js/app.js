@@ -69,7 +69,7 @@ class Histogram {
 
   render() {
     $('#histograms').append(
-      `<td class="histogram" id="${this.elName}"></td>`
+      `<th class="histogram" id="${this.elName}"></th>`
     );
   }
 
@@ -127,7 +127,7 @@ $(() => {
   // elm => histogram stuff
   let histograms = {};
   elmModule.ports.createHistograms.subscribe((colNames) => {
-    console.log('make histograms')
+    console.log('make histograms');
     colNames.map((name) => {
       histograms[name] = new Histogram(name);
     });
@@ -141,7 +141,9 @@ $(() => {
     var widths = $('#histograms').find('th').map((i, e) => $(e).width());
     _.zip(columns, widths).forEach(([col, width]) => {
       var values = agg[col];
-      if(histograms[col]) histograms[col].update(values, width);
+      if(histograms[col]) {
+        histograms[col].update(values, width);
+      }
     });
   });
   elmModule.ports.updateTransform.subscribe((transform) => {

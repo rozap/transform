@@ -347,8 +347,6 @@ shmooshSteps step1 step2 =
 stepsToMapping : TransformScript -> Env -> (List (Maybe InvalidStepError), SchemaMapping)
 stepsToMapping script env =
   let
-    d =
-      Debug.log "stepsToMapping" (script, env)
     initialMapping =
       env.columns
       |> List.map (\name -> (name, SourceColumn name))
@@ -383,7 +381,7 @@ stepsToNestedFuncs script =
     (\step expr ->
       case step of
         ApplyFunction resultCol funName args ->
-          FunAppNF funName (List.map exprToNestedFuncs args) resultCol
+          FunAppNF funName ([expr] ++ List.map exprToNestedFuncs args) resultCol
 
         _ ->
           Debug.crash "TODO"

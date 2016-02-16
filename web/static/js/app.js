@@ -144,6 +144,9 @@ $(() => {
       if(histograms[col]) histograms[col].update(values, width);
     });
   });
+  elmModule.ports.updateTransform.subscribe((transform) => {
+    channel.push('transform', {transforms: transform});
+  });
 
   new UploadView(datasetId);
 });

@@ -34,6 +34,7 @@ type Action
   = AddStep Step
   | RemoveStep Int -- index
   | StepAdderAction StepAdder.Action
+  | SaveTransform
   | ServerEvent ServerEvent
   | NoOp
 
@@ -72,6 +73,7 @@ view addr model =
                       tableScript == model.transformScript)
                     |> Maybe.withDefault False
                   )
+              , onClick addr SaveTransform
               ]
               [ text "Save Transform & Get Preview" ]
           ]
@@ -162,9 +164,9 @@ viewTransformEditor addr model =
               (Signal.forwardTo addr StepAdderAction)
               (columnNames model)
               model.stepAdderState
-      , pre
-          [style [("white-space", "pre-wrap")]]
-          [stepsToNestedFuncs model.transformScript |> encodeNestedFuncs |> JsEnc.encode 4 |> text]
+      --, pre
+      --    [style [("white-space", "pre-wrap")]]
+      --    [stepsToNestedFuncs model.transformScript |> encodeNestedFuncs |> JsEnc.encode 4 |> text]
       ]
 
 
@@ -287,6 +289,17 @@ update action model =
         , Effects.none
         )
 
+    SaveTransform ->
+      ( { model | table = Nothing, errors = [], rowsProcessed = 0 }
+      , Signal.send
+          updateTransformMailbox.address
+          (model.transformScript
+            |> stepsToNestedFuncs
+            |> encodeNestedFuncs)
+        |> Task.map (always NoOp)
+        |> Effects.task
+      )
+
     ServerEvent evt ->
       case evt of
         ProgressEvent rows ->
@@ -396,3 +409,11 @@ updateHistogramsMailbox =
 port updateHistograms : Signal (List ColumnName, List (ColumnName, JsDec.Value))
 port updateHistograms =
   updateHistogramsMailbox.signal
+
+
+updateTransformMailbox =
+  Signal.mailbox (JsEnc.string "__DATUM__") -- does this actually work for the backend?
+
+port updateTransform : Signal JsEnc.Value
+port updateTransform =
+  updateTransformMailbox.signal

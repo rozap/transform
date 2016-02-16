@@ -24,6 +24,9 @@ defmodule Transform.Channels.Transform do
 
   def handle_in("transform", %{"transforms" => transforms}, socket) do
     Compiler.compile(socket.assigns.dataset_id, transforms)
+
+    Logger.error("TODO: retrigger job")
+
     {:reply, :ok, socket}
   end
 

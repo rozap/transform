@@ -19,6 +19,10 @@ config :transform, Transform.Endpoint,
 # Do not print debug messages in production
 config :logger, level: :info
 
+config :transform, :zookeeper,
+  address: :"10.0.3.1",
+  port: 2181
+
 # ## SSL Support
 #
 # To get SSL working, you will need to add the `https` key
@@ -62,4 +66,4 @@ config :logger, level: :info
 
 # Finally import the config/prod.secret.exs
 # which should be versioned separately.
-import_config "prod.secret.exs"
+# import_config "prod.secret.exs"

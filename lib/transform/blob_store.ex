@@ -1,16 +1,13 @@
 defmodule Transform.BlobStore do
+
   defp write!(kind, ds_id, chunk) do
     relative = "#{kind}/#{ds_id}_chunk_#{UUID.uuid4}.csv"
-    absolute = Application.get_env(:transform, :blobs)[:path]
-    |> Path.join(relative)
 
-    device = File.open!(absolute, [:write])
-
-    chunk
+    encoded = chunk
     |> CSV.encode
-    |> Enum.each(fn line -> IO.binwrite(device, line) end)
+    |> Enum.join
 
-    File.close(device)
+    :erlcloud.put_object(Application.get_env(:transform, :blobs)[:bucket], relative, encoded)
 
     relative
   end
@@ -24,9 +21,7 @@ defmodule Transform.BlobStore do
   end
 
   def read!(relative) do
-    Application.get_env(:transform, :blobs)[:path]
-    |> Path.join(relative)
-    |> File.stream!
+    :erlcloud.get_object(Application.get_env(:transform, :blobs)[:bucket], relative)
   end
 
 end

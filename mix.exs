@@ -28,8 +28,7 @@ defmodule Transform.Mixfile do
       :postgrex,
       :erlzk,
       :workex,
-      :ex_aws,
-      :httpoison
+      :erlcloud
     ]]
   end
 
@@ -54,7 +53,7 @@ defmodule Transform.Mixfile do
      {:poolboy, "~> 1.5"},
      {:calendar, "~> 0.12.4"},
      {:erlzk, "~> 0.6.1"},
-     {:ex_aws, "~> 0.4.15"}
+     {:erlcoud, git: "https://github.com/erlcloud/erlcloud", tag: "0.13.0"}
    ]
   end
 

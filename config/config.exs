@@ -27,3 +27,33 @@ import_config "#{Mix.env}.exs"
 config :phoenix, :generators,
   migration: true,
   binary_id: false
+
+config :transform, Transform.Repo,
+  adapter: Ecto.Adapters.Postgres,
+  username: "postgres",
+  password: "postgres",
+  database: "transform_dev",
+  hostname: "localhost",
+  pool_size: 10
+
+config :transform, :zookeeper,
+  address: :"localhost",
+  port: 2181
+
+config :transform, :workers,
+  executor: [
+    count: 8,
+    high_water_mark: 8
+  ],
+  basic_table: [
+    count: 8,
+    high_water_mark: 8
+  ]
+
+config :transform, :herder,
+  interval: 60,
+  max_attempts: 4
+
+config :ex_aws,
+  access_key_id: [{:system, "AWS_ACCESS_KEY_ID"}, :instance_role],
+  secret_access_key: [{:system, "AWS_SECRET_ACCESS_KEY"}, :instance_role]

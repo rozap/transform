@@ -129,7 +129,7 @@ defmodule Transform.Executor.Worker do
         })
         Repo.update(cset)
         Logger.info("Finished working on #{chunk.sequence_number} for #{job.id}")
-      _ -> 
+      _ ->
         Logger.info("Chunk #{chunk.id} has already been completed")
 
     end

@@ -27,7 +27,9 @@ defmodule Transform.Mixfile do
       :phoenix_ecto,
       :postgrex,
       :erlzk,
-      :workex
+      :workex,
+      :ex_aws,
+      :httpoison
     ]]
   end
 
@@ -51,7 +53,8 @@ defmodule Transform.Mixfile do
      {:csv, "~> 1.2.3"},
      {:poolboy, "~> 1.5"},
      {:calendar, "~> 0.12.4"},
-     {:erlzk, "~> 0.6.1"}
+     {:erlzk, "~> 0.6.1"},
+     {:ex_aws, "~> 0.4.15"}
    ]
   end
 

@@ -84,11 +84,7 @@ update action columns model =
         Nothing ->
           Just
             (ConcatEditor
-              { args =
-                [ ConstantArg ""
-                , ColumnArg (List.head columns |> getMaybe "no columns")
-                , ConstantArg ""
-                ]
+              { args = []
               , resultName = "concat" ++ (List.head columns |> getMaybe "no columns")
               }
             )

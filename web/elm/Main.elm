@@ -116,14 +116,6 @@ viewTable addr model =
           |> List.map (\name ->
             viewColumnName (Signal.forwardTo addr AddStep) name
           )
-
-        viewRows rows =
-          tbody []
-            (rows
-            |> List.map (\row ->
-              tr []
-                (row |> List.map (\col -> td [] [text col]))
-            ))
       in
         table
           []
@@ -133,6 +125,16 @@ viewTable addr model =
               ]
           , Html.Lazy.lazy viewRows theTable.rows
           ]
+
+
+viewRows : List (List String) -> Html
+viewRows rows =
+  tbody []
+    (rows
+    |> List.map (\row ->
+      tr []
+        (row |> List.map (\col -> td [] [text col]))
+    ))
 
 
 viewColumnName : Signal.Address Step -> ColumnName -> Html

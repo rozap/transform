@@ -24,15 +24,20 @@ removeAt idx list =
 
 setAt : a -> Int -> List a -> Maybe (List a)
 setAt item idx list =
+  updateAt (always item) idx list
+
+
+updateAt : (a -> a) -> Int -> List a -> Maybe (List a)
+updateAt f idx list =
   case (idx, list) of
     (0, x::xs) ->
-      Just (item::xs)
+      Just ((f x)::xs)
 
     (n, []) ->
       Nothing
 
     (n, x::xs) ->
-      setAt item (n-1) xs
+      updateAt f (n-1) xs
       |> Maybe.map (\ys -> x::ys)
 
 
@@ -49,3 +54,25 @@ getMaybe msg maybe =
 singleton : a -> List a
 singleton x =
   [x]
+
+
+getOks : List (Result a b) -> Result (List a) (List b)
+getOks results =
+  let
+    go soFarErr soFarOk remaining =
+      case remaining of
+        [] ->
+          case (soFarErr, soFarOk) of
+            ([], xs) ->
+              Ok xs
+
+            (errs, _) ->
+              Err errs
+
+        (Ok x::xs) ->
+          go soFarErr (x::soFarOk) xs
+
+        (Err x::xs) ->
+          go (x::soFarErr) soFarOk xs
+  in
+    go [] [] results

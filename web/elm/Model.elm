@@ -25,11 +25,16 @@ type alias SchemaMapping =
 
 
 type Expr
+  = FunApp FuncName (List Expr)
+  | Atom Atom
+
+
+type Atom
   = SourceColumn ColumnName
-  | FunApp FuncName (List Expr)
   | StringLit String
   | NumberLit Int
   | DoubleLit Float
+  | BoolLit Bool
 
 
 type alias Function =
@@ -78,7 +83,7 @@ type TypeError
       }
   | NonexistentFunction FuncName
   | NonexistentColumn ColumnName
-  | MultipleErrors (List TypeError)
+  | MultipleTypeErrors (List TypeError)
 
 
 type alias Env =
@@ -90,12 +95,6 @@ type alias Env =
 exprType : Env -> Expr -> Result TypeError SoqlType
 exprType env expr =
   case expr of
-    SourceColumn colName ->
-      if List.member colName env.columns then
-        Ok SoqlText
-      else
-        Err (NonexistentColumn colName)
-
     FunApp name args ->
       case Dict.get name env.functions of
         Just fun ->
@@ -103,7 +102,7 @@ exprType env expr =
             argTypeResults =
               args |> List.map (exprType env)
           in
-            case getOks argTypeResults of
+            case Util.getOks argTypeResults of
               Ok argTypes ->
                 if argsMatch fun.arguments argTypes then
                   Ok fun.returnType
@@ -115,28 +114,39 @@ exprType env expr =
                       })
 
               Err errs ->
-                Err (MultipleErrors errs)
+                Err (MultipleTypeErrors errs)
 
         Nothing ->
           Err (NonexistentFunction name)
 
-    StringLit _ ->
-      Ok SoqlText
+    Atom atom ->
+      case atom of
+        SourceColumn colName ->
+          if List.member colName env.columns then
+            Ok SoqlText
+          else
+            Err (NonexistentColumn colName)
 
-    DoubleLit _ ->
-      Ok SoqlDouble
+        StringLit _ ->
+          Ok SoqlText
 
-    NumberLit _ ->
-      Ok SoqlNumber
+        DoubleLit _ ->
+          Ok SoqlDouble
+
+        NumberLit _ ->
+          Ok SoqlNumber
+
+        BoolLit _ ->
+          Ok SoqlCheckbox
 
 
 schemaType : SchemaMapping -> Env -> Result TypeError Schema
 schemaType mapping env =
   mapping
     |> List.map (snd >> exprType env)
-    |> getOks
+    |> Util.getOks
     |> Result.map (\types -> List.map2 (,) (List.map fst mapping) types)
-    |> Result.formatError MultipleErrors
+    |> Result.formatError MultipleTypeErrors
 
 
 argsMatch : FunArgs -> List SoqlType -> Bool
@@ -149,26 +159,58 @@ argsMatch expectedArgs givenArgs =
       (typeList |> List.map snd) == givenArgs
 
 
-getOks : List (Result a b) -> Result (List a) (List b)
-getOks results =
-  let
-    go soFarErr soFarOk remaining =
-      case remaining of
-        [] ->
-          case (soFarErr, soFarOk) of
-            ([], xs) ->
-              Ok xs
+defaultArgsFor : FuncName -> Env -> List Atom
+defaultArgsFor funcName env =
+  env.functions
+  |> Dict.get funcName
+  |> Util.getMaybe "nonexistent function"
+  |> (\func ->
+    case func.arguments of
+      VarArgs ty ->
+        defaultAtomForType ty
+        |> List.repeat 3
 
-            (errs, _) ->
-              Err errs
+      NormalArgs nameAndTypePairs ->
+        nameAndTypePairs
+        |> List.map (snd >> defaultAtomForType)
+  )
 
-        (Ok x::xs) ->
-          go soFarErr (x::soFarOk) xs
 
-        (Err x::xs) ->
-          go (x::soFarErr) soFarOk xs
-  in
-    go [] [] results
+defaultAtomForType : SoqlType -> Atom
+defaultAtomForType ty =
+  case ty of
+    SoqlCheckbox ->
+      BoolLit True
+
+    SoqlDouble ->
+      DoubleLit 0
+
+    SoqlNumber ->
+      NumberLit 0
+
+    SoqlText ->
+      StringLit ""
+
+    _ ->
+      Debug.crash "TODO"
+
+    --SoqlMoney ->
+    --  XXX
+
+    --SoqlFloatingTimestamp ->
+    --  XXX
+
+    --SoqlLocation ->
+    --  XXX
+
+    --SoqlPoint ->
+    --  XXX
+
+    --SoqlPolygon ->
+    --  XXX
+
+    --SoqlLine ->
+    --  XXX
 
 
 type SoqlType
@@ -193,7 +235,7 @@ type Step
   = DropColumn ColumnName
   | RenameColumn ColumnName ColumnName
   | MoveColumnToPosition ColumnName Int
-  | ApplyFunction ColumnName FuncName (List Expr)
+  | ApplyFunction ColumnName FuncName (List Atom)
 
 
 type alias TransformScript =
@@ -205,6 +247,7 @@ type InvalidStepError
   | ColumnAlreadyExists ColumnName
   | ExprTypeError TypeError
   | IndexOutOfRange Int
+  | MultipleStepErrors (List InvalidStepError)
 
 
 colExists : ColumnName -> SchemaMapping -> Bool
@@ -255,17 +298,34 @@ applyStep step env mapping =
           Err (NonexistentColumnStep colName)
 
     ApplyFunction newColName funcName args ->
+      -- this is ugly
       let
         newExpr =
-          FunApp funcName args
-      in
-        case exprType env newExpr of
-          Ok _ ->
-            (newColName, newExpr) :: mapping
-            |> Ok
+          FunApp funcName (List.map Atom args)
 
-          Err typeErr ->
-            Err (ExprTypeError typeErr)
+        maybeColExistsErr =
+          case findCol newColName mapping of
+            Just col ->
+              Err (ColumnAlreadyExists (fst col))
+
+            _ ->
+              Ok ()
+
+        maybeTypeErrs =
+          case exprType env newExpr of
+            Ok _ ->
+              Ok ()
+
+            Err typeErr ->
+              Err (ExprTypeError typeErr)
+      in
+        case Util.getOks [maybeColExistsErr, maybeTypeErrs] of
+          Ok _ ->
+            Ok <| (newColName, newExpr) :: mapping
+
+          Err errs ->
+            Err <| MultipleStepErrors errs
+        
 
 
 -- this would have to be done before the transformer...
@@ -344,21 +404,26 @@ shmooshSteps step1 step2 =
       Nothing
 
 
-stepsToMapping : TransformScript -> Env -> (List (Maybe InvalidStepError), SchemaMapping)
+-- TODO: schema, not list columnname
+stepsToMapping : TransformScript -> Env -> (List (Env, Maybe InvalidStepError), SchemaMapping)
 stepsToMapping script env =
   let
     initialMapping =
       env.columns
-      |> List.map (\name -> (name, SourceColumn name))
+      |> List.map (\name -> (name, name |> SourceColumn |> Atom))
   in
     List.foldl
       (\step (errors, mapping) ->
-        case applyStep step env mapping of
-          Ok newMapping ->
-            (errors ++ [Nothing], newMapping)
+        let
+          curEnv =
+            { env | columns = List.map fst mapping }
+        in
+          case applyStep step env mapping of
+            Ok newMapping ->
+              (errors ++ [(curEnv, Nothing)], newMapping)
 
-          Err err ->
-            (errors ++ [Just err], mapping)
+            Err err ->
+              (errors ++ [(curEnv, Just err)], mapping)
       )
       ([], initialMapping)
       script
@@ -381,7 +446,10 @@ stepsToNestedFuncs script =
     (\step expr ->
       case step of
         ApplyFunction resultCol funName args ->
-          FunAppNF funName ([expr] ++ List.map exprToNestedFuncs args) resultCol
+          FunAppNF
+            funName
+            ([expr] ++ List.map atomToNestedFuncs args)
+            resultCol
 
         _ ->
           Debug.crash "TODO"
@@ -390,9 +458,9 @@ stepsToNestedFuncs script =
     script
 
 
-exprToNestedFuncs : Expr -> NestedFuncs
-exprToNestedFuncs expr =
-  case expr of
+atomToNestedFuncs : Atom -> NestedFuncs
+atomToNestedFuncs atom =
+  case atom of
     SourceColumn source ->
       SourceColumnNF source
 

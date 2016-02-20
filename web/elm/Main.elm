@@ -17,7 +17,7 @@ import Html.Events.Extra
 import Model exposing (..)
 import Table exposing (Table)
 import Util
-import StepAdder
+import StepEditor
 
 
 type alias Model =
@@ -26,14 +26,13 @@ type alias Model =
   , table : Maybe (TransformScript, Table)
   , rowsProcessed : Int
   , aggregates : List (ColumnName, JsDec.Value)
-  , stepAdderState : StepAdder.Model
   }
 
 
 type Action
   = AddStep Step
+  | UpdateStepAt Int StepEditor.Action
   | RemoveStep Int -- index
-  | StepAdderAction StepAdder.Action
   | SaveTransform
   | ServerEvent ServerEvent
   | NoOp
@@ -56,7 +55,6 @@ initModel =
   , table = Nothing
   , rowsProcessed = 0
   , aggregates = []
-  , stepAdderState = StepAdder.initModel
   }
 
 
@@ -64,8 +62,9 @@ view : Signal.Address Action -> Model -> Html
 view addr model =
   div []
     [ div [ class "pure-g" ]
-      [ div [ class "pure-u-1-3" ]
-          [ viewTransformEditor addr model
+      [ div [ class "pure-u-2-3" ]
+          [ div [ class "pure-u-1-3", id "upload" ] []
+          , viewTransformEditor addr model
           , button
               [ disabled
                   (model.table
@@ -79,14 +78,12 @@ view addr model =
           ]
       , div [ class "pure-u-1-3", id "errors" ]
           [ viewErrors model ]
-      , div [ class "pure-u-1-3", id "upload" ]
-          []
       , div [ class "pure-u-1-1" ]
           [ viewProgress model ]
       ]
     , table [ id "histograms" ] []
     , div [ id "results" ]
-        [ Html.Lazy.lazy viewTable model ]
+        [ viewTable addr model ]
     ]
 
 
@@ -106,8 +103,8 @@ viewProgress model =
       toString goodRows ++ " good rows + " ++ toString badRows ++ " bad rows = " ++ toString totalRows ++ " total"
 
 
-viewTable : Model -> Html
-viewTable model =
+viewTable : Signal.Address Action -> Model -> Html
+viewTable addr model =
   case model.table of
     Nothing ->
       p [] [text "No results yet"]
@@ -116,14 +113,17 @@ viewTable model =
       let
         header =
           theTable.columnNames
-          |> List.map (\name -> th [] [text name])
-
-        rows =
-          theTable.rows
-          |> List.map (\row ->
-            tr []
-              (row |> List.map (\col -> td [] [text col]))
+          |> List.map (\name ->
+            viewColumnName (Signal.forwardTo addr AddStep) name
           )
+
+        viewRows rows =
+          tbody []
+            (rows
+            |> List.map (\row ->
+              tr []
+                (row |> List.map (\col -> td [] [text col]))
+            ))
       in
         table
           []
@@ -131,10 +131,29 @@ viewTable model =
               [ tr []
                   header
               ]
-          , tbody []
-              rows
-          , text <| toString model.aggregates
+          , Html.Lazy.lazy viewRows theTable.rows
           ]
+
+
+viewColumnName : Signal.Address Step -> ColumnName -> Html
+viewColumnName addr name =
+  th
+    []
+    [ text name
+    , br [] []
+    , span
+        [ style [("font-weight", "normal")] ]
+        [ button
+            [ onClick addr (RenameColumn name "newName") ]
+            [ text "Rename" ]
+        , button
+            [ onClick addr (MoveColumnToPosition name 0) ]
+            [ text "Move" ]
+        , button
+            [ onClick addr (DropColumn name) ]
+            [ text "Drop" ]
+        ]
+    ]
 
 
 viewErrors : Model -> Html
@@ -147,30 +166,45 @@ viewErrors model =
 viewTransformEditor : Signal.Address Action -> Model -> Html
 viewTransformEditor addr model =
   let
+    env =
+      columnNames model |> makeEnv
+
     (stepErrors, mapping) =
       stepsToMapping
         model.transformScript
-        (columnNames model |> makeEnv)
+        env
   in
     div
       []
-      [ viewScript addr (List.map2 (,) model.transformScript stepErrors)
+      [ viewScript
+          addr
+          (List.map2 (,) model.transformScript stepErrors)
       , case model.table of
           Nothing ->
             span [] []
 
           Just _ ->
-            StepAdder.view
-              (Signal.forwardTo addr StepAdderAction)
-              (columnNames model)
-              model.stepAdderState
-      --, pre
-      --    [style [("white-space", "pre-wrap")]]
-      --    [stepsToNestedFuncs model.transformScript |> encodeNestedFuncs |> JsEnc.encode 4 |> text]
+            let
+              firstFunName =
+                env.functions
+                |> Dict.keys
+                |> List.head
+                |> Util.getMaybe "no functions"
+
+              defaultArgs =
+                defaultArgsFor firstFunName env
+            in
+              button
+                [ onClick
+                    addr
+                    (AddStep (ApplyFunction "someCol" firstFunName defaultArgs))
+                ]
+                [ text "Add Function" ]
       ]
 
 
-viewScript : Signal.Address Action -> List (Step, Maybe InvalidStepError) -> Html
+-- TODO: pass schema at each step
+viewScript : Signal.Address Action -> List (Step, (Env, Maybe InvalidStepError)) -> Html
 viewScript addr scriptWithErrors =
   let
     closeButton idx =
@@ -178,16 +212,17 @@ viewScript addr scriptWithErrors =
         [ onClick addr (RemoveStep idx) ]
         [ text "x" ]
 
-    viewStep idx (step, maybeError) =
+    viewStep idx (step, (env, maybeError)) =
       case maybeError of
         Just err ->
           li
             []
             [ closeButton idx
             , text " "
-            , span
-                []
-                [ text (toString step) ]
+            , StepEditor.view
+                (Signal.forwardTo addr (UpdateStepAt idx))
+                env
+                step
             , text " "
             , span
                 [ style [("color", "red")] ]
@@ -199,7 +234,10 @@ viewScript addr scriptWithErrors =
             []
             [ closeButton idx
             , text " "
-            , text (toString step)
+            , StepEditor.view
+                (Signal.forwardTo addr (UpdateStepAt idx))
+                env
+                step
             ]
   in
     case scriptWithErrors of
@@ -270,24 +308,19 @@ update action model =
       , Effects.none
       )
 
+    UpdateStepAt idx action ->
+      ( { model | transformScript =
+            model.transformScript
+            |> Util.updateAt (StepEditor.update action) idx
+            |> Util.getMaybe "idx out of range"
+        }
+      , Effects.none
+      )
+
     RemoveStep idx ->
       ( { model | transformScript = Util.removeAt idx model.transformScript |> smooshScript }
       , Effects.none
       )
-
-    StepAdderAction action ->
-      let
-        (newStepAdderState, maybeNewStep) =
-          StepAdder.update action (columnNames model) model.stepAdderState
-      in
-        ( { model
-              | stepAdderState = newStepAdderState
-              , transformScript =
-                  model.transformScript ++
-                    (maybeNewStep |> Maybe.map Util.singleton |> Maybe.withDefault [])
-          }
-        , Effects.none
-        )
 
     SaveTransform ->
       ( { model | table = Nothing, errors = [], rowsProcessed = 0 }

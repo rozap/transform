@@ -22,13 +22,14 @@ bool addr currentValue =
     [ text (toString currentValue) ]
 
 
-string : Signal.Address String -> Int -> String -> Html
-string addr width currentValue =
+string : Signal.Address String -> (List Attribute) -> String -> Html
+string addr attributes currentValue =
   input
-    [ on "input" (targetValue JsDec.string) (Signal.message addr)
-    , value currentValue
-    , size width
-    ]
+    ( [ on "input" (targetValue JsDec.string) (Signal.message addr)
+      , value currentValue
+      ]
+    ++ attributes
+    )
     []
 
 
@@ -41,6 +42,7 @@ int addr currentValue =
         (Signal.message addr)
     , type' "number"
     , step "1"
+    , size 3
     , value (toString currentValue)
     ]
     []
@@ -88,7 +90,7 @@ view addr model =
   div
     []
     [ p [] [bool (Signal.forwardTo addr EditBool) model.b]
-    , p [] [string (Signal.forwardTo addr EditString) 3 model.str]
+    , p [] [string (Signal.forwardTo addr EditString) [size 3] model.str]
     , p [] [int (Signal.forwardTo addr EditInt) model.i]
     ]
 

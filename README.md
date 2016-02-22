@@ -1,5 +1,17 @@
 # Transform
 
+## Install
+
+1. Install Elixir
+2. `mix deps.get`
+3. `npm install`
+
+## Run
+
+```
+PORT=4000 iex -S mix phoenix.server
+```
+
 ## Features
 
 - **Transform script frontend:** Kick off a job from the browser by specifying a transform script and uploading a file.

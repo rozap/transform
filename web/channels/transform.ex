@@ -23,6 +23,7 @@ defmodule Transform.Channels.Transform do
   end
 
   def handle_in("transform", %{"transforms" => transforms}, socket) do
+    Logger.info("Compile #{inspect transforms}")
     Compiler.compile(socket.assigns.dataset_id, transforms)
     {:reply, :ok, socket}
   end

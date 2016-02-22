@@ -16,6 +16,14 @@ defmodule Transform.Interpreter.Ops do
     {:ok, transformed}
   end
 
+  def lookup({:ok, datum}, col_name, lookup_table) do
+    value = Dict.get(datum, col_name)
+    new_value = Enum.find_value(lookup_table, value, fn
+      [^value, to_value] -> to_value
+      [_, _] -> false
+    end)
+    {:ok, Dict.put(datum, col_name, new_value)}
+  end
 
   defp as_dt(nil), do: {:error, "no column named that"}
   defp as_dt(value) do

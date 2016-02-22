@@ -16,6 +16,7 @@ defmodule Transform.Zookeeper do
       path: make_path(base_path, UUID.uuid4)
     }
     |> connect!
+    |> start_net_kernel!
     |> add_self!
     |> add_nodes!
     {:ok, state}
@@ -38,6 +39,20 @@ defmodule Transform.Zookeeper do
   end
 
   defp make_path(base_path, child), do: "#{base_path}/#{child}"
+
+  defp start_net_kernel!(state) do
+    case :inet.getif do
+      {:ok, [{addr, _, _} | _]} ->
+        address = case addr do
+          {a, b, c, d} -> "#{a}.#{b}.#{c}.#{d}"
+        end
+        name = System.get_env("NODE_NAME") || "seed"
+        node = String.to_atom(name <> "@" <> address)
+        Logger.info("I'm node #{node}")
+        :net_kernel.start([node, :longnames])
+    end
+    state
+  end
 
   defp add_self!(state) do
 
@@ -89,7 +104,6 @@ defmodule Transform.Zookeeper do
   end
 
   defp add_nodes!(state) do
-
     case :erlzk.get_children(state.zk, state.base_path) do
       {:ok, children} ->
         connect_to(state, children)

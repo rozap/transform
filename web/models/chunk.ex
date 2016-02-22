@@ -13,6 +13,8 @@ defmodule Transform.Chunk do
 
   def changeset(model, params \\ :empty) do
     model
-    |> cast(params, [], [:attempt_number, :completed_at])
+    |> cast(params, [], [:attempt_number, :completed_at, :completed_location])
   end
+
+
 end

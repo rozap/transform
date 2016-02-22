@@ -31,3 +31,4 @@ RUN mix deps.get
 RUN mix compile
 RUN mix phoenix.digest
 
+EXPOSE 4369

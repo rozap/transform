@@ -34,12 +34,31 @@ Before you build, make sure the postgres host and zookeeper host are pointing at
 
 ``` docker build --tag=neato```
 
-If the output is `81d74957d398`, then run
+If the output is `164e286b4e2a`, then run
 ```
-docker run -p 4000:4000
-  -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID"
-  -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY"
-  -it 81d74957d398 iex -S mix phoenix.server
+docker run\
+  -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID"\
+  -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY"\
+  -e "PORT=9116"\
+  -e "NODE_NAME=alpha"\
+  -p 9100-9116:9100-9116/tcp\
+  -it 164e286b4e2a\
+  epmd -daemon &&\
+  iex --erl "-kernel inet_dist_listen_min 9100 -kernel inet_dist_listen_max 9115"\
+  -S mix phoenix.server
 ```
 
 Make sure you have the aws creds set
+
+To cluster, you could start another
+```
+docker run\
+  -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID"\
+  -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY"\
+  -e "PORT=9216"\
+  -e "NODE_NAME=beta"\
+  -p 9200-9216:9200-9216/tcp\
+  -it 164e286b4e2a\
+  iex --erl "-kernel inet_dist_listen_min 9200 -kernel inet_dist_listen_max 9215"\
+  -S mix phoenix.server
+```

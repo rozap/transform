@@ -9,7 +9,7 @@ defmodule Transform.Repo.Migrations.CreateChunkLog do
     create table(:jobs) do
       add :upload_id, references(:uploads)
       add :dataset, :string
-      add :source, :string
+      add :source, :text
       timestamps
     end
 

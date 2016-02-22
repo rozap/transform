@@ -60,20 +60,10 @@ defmodule Transform.Executor.Worker do
   end
 
   def aggregate(transformed) do
-    Enum.reduce(transformed, %{}, fn row, acc ->
-      Enum.reduce(row, acc, fn {colname, value}, acc ->
-        path = [colname, value]
-        acc = case acc[colname] do
-          nil -> put_in(acc, [colname], %{})
-          _ -> acc
-        end
-        acc = case acc[colname][value] do
-          nil -> put_in(acc, path, 0)
-          _ -> acc
-        end
-
-        current = get_in(acc, path)
-        put_in(acc, path, current + 1)
+    Enum.reduce(transformed, %{}, fn row, counters ->
+      Enum.reduce(row, counters, fn {colname, value}, counters ->
+        counter = Map.get(counters, colname, Spacesaving.init(64))
+        Map.put(counters, colname, Spacesaving.push(counter, value))
       end)
     end)
   end
@@ -106,6 +96,7 @@ defmodule Transform.Executor.Worker do
 
     transformed = Enum.map(successes, fn {ok, row} -> row end)
     errors      = Enum.map(errors, fn {:error, err} -> err end)
+    agg         = aggregate(transformed)
 
     # This isn't actually correct
     case Repo.get(Chunk, chunk.id) do
@@ -113,7 +104,7 @@ defmodule Transform.Executor.Worker do
         dispatch(job.dataset, {:transformed, basic_table, %{
           errors: errors,
           transformed: transformed,
-          aggregate: aggregate(transformed),
+          aggregate: agg,
           chunk: chunk
         }})
 
@@ -136,9 +127,9 @@ defmodule Transform.Executor.Worker do
           completed_location: location
         })
         Repo.update(cset)
-        Logger.info("Finished working on #{chunk.sequence_number} for #{job.id}")
+        # Logger.info("Finished working on #{chunk.sequence_number} for #{job.id}")
       _ ->
-        Logger.info("Chunk #{chunk.id} has already been completed")
+        Logger.warn("Chunk #{chunk.id} has already been completed")
 
     end
 

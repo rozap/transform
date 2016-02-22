@@ -66,8 +66,6 @@ class Histogram {
     this.elName = `histogram${column.hashCode()}`;
 
     this.render();
-
-
     this._updateChart = chart(this.selector, this._width, 120);
   }
 
@@ -219,8 +217,10 @@ class Transformer {
       try {
         ts = JSON.parse(text);
       } catch (e) {
+        console.error(e)
         //ok
       }
+      console.log(text);
       this.channel.push("transform", {
         transforms: ts
       });

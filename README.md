@@ -5,7 +5,7 @@
 - **Transform script frontend:** Kick off a job from the browser by specifying a transform script and uploading a file.
 - **Fast preview:** streams first N (configurable) rows to the browser, while the rest is still uploading and transforming.
 - **Dancing histograms:** the backend maintains streaming histogram for each column and sends updates to the browser.
-- Writes basic table chunks to **S3**, (TODO: allowing job to be rerun (e.g. with a different transform or because of a failure) without re-uploading or re-decoding)
+- **S3** Writes basic table chunks to **S3**, (TODO: allowing job to be rerun (e.g. with a different transform or because of a failure) without re-uploading or re-decoding). Also writes results to S3; they can be pulled, diffed, and upserted from there.
 - **Transform retry / fault tolerance:** A record is written to Postgres for each basic table chunk received, and it is then marked done when it has been transformed. The `ChunkHerder` polls the database for chunks which have failed to transform, and retries them a configurable number of times. Because of this, if the entire system is killed and restarted, running transforms will finish. (TODO: write aggregator state to a durable store).
 - **Backpressure and exponential backoff:** The basic table and transform phases maintain configurable "high water marks" for their work queues, and the stages upstream of them implement exponential backoff. This backpressure extends all the way to reading from the upload socket, ensuring that the memory usage of these stages will remain bounded.
 - **Multi-node:** Start up multiple Erlang VMs (see below), each of which runs the phoenix app. If you start a job in the UI served from one, but view that job with the UI served by another, the UI will update since events are being relayed between VMs.
@@ -34,31 +34,12 @@ Before you build, make sure the postgres host and zookeeper host are pointing at
 
 ``` docker build --tag=neato```
 
-If the output is `164e286b4e2a`, then run
+If the output is `81d74957d398`, then run
 ```
-docker run\
-  -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID"\
-  -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY"\
-  -e "PORT=9116"\
-  -e "NODE_NAME=alpha"\
-  -p 9100-9116:9100-9116/tcp\
-  -it 164e286b4e2a\
-  epmd -daemon &&\
-  iex --erl "-kernel inet_dist_listen_min 9100 -kernel inet_dist_listen_max 9115"\
-  -S mix phoenix.server
+docker run -p 4000:4000
+  -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID"
+  -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY"
+  -it 81d74957d398 iex -S mix phoenix.server
 ```
 
 Make sure you have the aws creds set
-
-To cluster, you could start another
-```
-docker run\
-  -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID"\
-  -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY"\
-  -e "PORT=9216"\
-  -e "NODE_NAME=beta"\
-  -p 9200-9216:9200-9216/tcp\
-  -it 164e286b4e2a\
-  iex --erl "-kernel inet_dist_listen_min 9200 -kernel inet_dist_listen_max 9215"\
-  -S mix phoenix.server
-```

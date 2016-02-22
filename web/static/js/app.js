@@ -117,12 +117,12 @@ $(() => {
       )
     )
   );
-  channel.on("dataset:aggregate", (evt) =>
+  channel.on("dataset:aggregate", _.throttle((evt) =>
     elmModule.ports.phoenixDatasetAggregate.send(
       Object.keys(evt).map((colName) =>
         [colName, evt[colName]]
       )
-    )
+    ), 1000)
   );
   // elm => histogram stuff
   let histograms = {};

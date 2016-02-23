@@ -2,9 +2,17 @@
 
 ## Install
 
-1. Install Elixir
-2. `mix deps.get`
-3. `npm install`
+```
+brew install elixir # something similar on linux
+mix deps.get
+npm install
+mix ecto.create
+mix ecto.migrate
+export AWS_ACCESS_KEY_ID=<your id>
+export AWS_SECRET_ACCESS_KEY=<your key>
+
+# set the `transform/blobs/bucket` setting in `config.exs` to an S3 bucket accessible with these creds
+```
 
 ## Run
 

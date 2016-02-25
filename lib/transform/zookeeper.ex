@@ -16,8 +16,8 @@ defmodule Transform.Zookeeper do
       path: make_path(base_path, UUID.uuid4)
     }
     |> connect!
-    |> add_self!
-    |> add_nodes!
+    # |> add_self!
+    # |> add_nodes!
     {:ok, state}
   end
 

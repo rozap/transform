@@ -131,6 +131,8 @@ defmodule Transform.Executor.Worker do
 
         location = BlobStore.write_transformed_chunk!(job.dataset, rows)
 
+        Logger.info "completed chunk is at #{location}"
+
         cset = Chunk.changeset(chunk, %{
           completed_at: Ecto.DateTime.utc,
           completed_location: location

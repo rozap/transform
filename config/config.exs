@@ -40,7 +40,7 @@ config :transform, :workers,
 
 config :transform, :herder,
   interval: 60,
-  max_attempts: 4
+  max_attempts: 20
 
 config :transform, :blobs,
   bucket: "publishing-stuff"

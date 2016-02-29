@@ -18,12 +18,13 @@ import Model exposing (..)
 import Table exposing (Table)
 import Util
 import StepEditor
+import Encode
 
 
 type alias Model =
   { transformScript : TransformScript
   , errors : List String
-  , table : Maybe (TransformScript, Table)
+  , table : Maybe Table
   , rowsProcessed : Int
   , aggregates : List (ColumnName, JsDec.Value)
   }
@@ -60,31 +61,53 @@ initModel =
 
 view : Signal.Address Action -> Model -> Html
 view addr model =
-  div []
-    [ div [ class "pure-g" ]
-      [ div [ class "pure-u-2-3" ]
-          [ div [ class "pure-u-1-3", id "upload" ] []
-          , viewTransformEditor addr model
-          , button
-              [ disabled
-                  (model.table
-                    |> Maybe.map (\(tableScript, _) ->
-                      tableScript == model.transformScript)
-                    |> Maybe.withDefault False
-                  )
-              , onClick addr SaveTransform
-              ]
-              [ text "Save Transform & Get Preview" ]
+  let
+    (increments, finalMapping) =
+      scriptToMapping
+        model.transformScript
+        (columnNames model.table)
+  in
+    div []
+      [ div [ class "pure-g" ]
+        [ div [ class "pure-u-2-3" ]
+            [ div [ class "pure-u-1-3", id "upload" ] []
+            , viewTransformEditor addr model.transformScript increments
+            , button
+                [ disabled
+                    False
+                    --(model.table
+                    --  |> Maybe.map (\(tableScript, _) ->
+                    --    tableScript == model.transformScript)
+                    --  |> Maybe.withDefault False
+                    --)
+                , onClick addr SaveTransform
+                ]
+                [ text "Save Transform & Get Preview" ]
+            ]
+        , div [ class "pure-u-1-3", id "errors" ]
+            [ viewErrors model ]
+        , div [ class "pure-u-1-1" ]
+            [ viewProgress model ]
+        ]
+      , table [ id "histograms" ] []
+      , div [ id "results" ]
+          [ model.table
+            |> Maybe.map (\table ->
+              case Table.forNewMapping finalMapping table of
+                Err neededExprs ->
+                  div []
+                    [ p [] [text "Need moar exprs from the server..."]
+                    , ul []
+                        (neededExprs
+                        |> List.map (\expr -> li [] [text (toString expr)]))
+                    ]
+
+                Ok table ->
+                  viewTable addr table
+            )
+            |> Maybe.withDefault (p [] [text "No results yet"])
           ]
-      , div [ class "pure-u-1-3", id "errors" ]
-          [ viewErrors model ]
-      , div [ class "pure-u-1-1" ]
-          [ viewProgress model ]
       ]
-    , table [ id "histograms" ] []
-    , div [ id "results" ]
-        [ viewTable addr model ]
-    ]
 
 
 viewProgress : Model -> Html
@@ -103,28 +126,19 @@ viewProgress model =
       toString goodRows ++ " good rows + " ++ toString badRows ++ " bad rows = " ++ toString totalRows ++ " total"
 
 
-viewTable : Signal.Address Action -> Model -> Html
-viewTable addr model =
-  case model.table of
-    Nothing ->
-      p [] [text "No results yet"]
-
-    Just (_, theTable) ->
-      let
-        header =
-          theTable.columnNames
-          |> List.map (\name ->
-            viewColumnName (Signal.forwardTo addr AddStep) name
-          )
-      in
-        table
-          []
-          [ thead []
-              [ tr []
-                  header
-              ]
-          , Html.Lazy.lazy viewRows theTable.rows
-          ]
+viewTable : Signal.Address Action -> Table -> Html
+viewTable addr theTable =
+  table
+    []
+    [ thead []
+        [ tr []
+          (List.map
+            (viewColumnHeader (Signal.forwardTo addr AddStep))
+            theTable.mapping)
+        ]
+      -- getting harder to lazify this
+    , Html.Lazy.lazy viewRows (Table.getRows theTable)
+    ]
 
 
 viewRows : List (List String) -> Html
@@ -137,11 +151,13 @@ viewRows rows =
     ))
 
 
-viewColumnName : Signal.Address Step -> ColumnName -> Html
-viewColumnName addr name =
+viewColumnHeader : Signal.Address Step -> (ColumnName, Expr, SoqlType) -> Html
+viewColumnHeader addr (name, expr, ty) =
   th
-    []
-    [ text name
+    [ style [("font-weight", "normal")] ]
+    [ span [ style [("font-weight", "bold")] ] [ text name ]
+    , text ": "
+    , span [ style [("font-style", "italic")] ] [text (toString ty)]
     , br [] []
     , span
         [ style [("font-weight", "normal")] ]
@@ -155,6 +171,14 @@ viewColumnName addr name =
             [ onClick addr (DropColumn name) ]
             [ text "Drop" ]
         ]
+    , pre
+        [ style
+            [ ("white-space", "pre-wrap")
+            , ("margin", "0")
+            , ("text-align", "left")
+            ]
+        ]
+        [ text (toString expr) ]
     ]
 
 
@@ -165,138 +189,70 @@ viewErrors model =
   |> ul [class "errors"]
 
 
-viewTransformEditor : Signal.Address Action -> Model -> Html
-viewTransformEditor addr model =
-  let
-    env =
-      columnNames model |> makeEnv
+viewTransformEditor : Signal.Address Action
+                   -> TransformScript
+                   -> List (TypedSchemaMapping, Maybe InvalidStepError)
+                   -> Html
+viewTransformEditor addr transformScript increments =
+  div
+    []
+    [ viewScript
+        addr
+        (List.map2 (,) transformScript increments)
+    , let
+        firstFunName =
+          Model.functions
+          |> Dict.keys
+          |> List.head
+          |> Util.getMaybe "no functions"
 
-    (stepErrors, mapping) =
-      stepsToMapping
-        model.transformScript
-        env
-  in
-    div
-      []
-      [ viewScript
-          addr
-          (List.map2 (,) model.transformScript stepErrors)
-      , case model.table of
-          Nothing ->
-            span [] []
-
-          Just _ ->
-            let
-              firstFunName =
-                env.functions
-                |> Dict.keys
-                |> List.head
-                |> Util.getMaybe "no functions"
-
-              defaultArgs =
-                defaultArgsFor firstFunName env
-            in
-              button
-                [ onClick
-                    addr
-                    (AddStep (ApplyFunction "someCol" firstFunName defaultArgs))
-                ]
-                [ text "Add Function" ]
-      ]
+        defaultArgs =
+          StepEditor.defaultArgsFor firstFunName
+      in
+        button
+          [ onClick
+              addr
+              (AddStep (ApplyFunction "someCol" firstFunName defaultArgs))
+          ]
+          [ text "Add Function" ]
+    ]
 
 
 -- TODO: pass schema at each step
-viewScript : Signal.Address Action -> List (Step, (Env, Maybe InvalidStepError)) -> Html
-viewScript addr scriptWithErrors =
+viewScript : Signal.Address Action -> List (Step, (TypedSchemaMapping, Maybe InvalidStepError)) -> Html
+viewScript addr scriptWithIncrements =
   let
     closeButton idx =
       button
         [ onClick addr (RemoveStep idx) ]
         [ text "x" ]
 
-    viewStep idx (step, (env, maybeError)) =
-      case maybeError of
-        Just err ->
-          li
-            []
-            [ closeButton idx
-            , text " "
-            , StepEditor.view
-                (Signal.forwardTo addr (UpdateStepAt idx))
-                env
-                step
-            , text " "
-            , span
-                [ style [("color", "red")] ]
-                [ text (toString err) ]
-            ]
-
-        Nothing ->
-          li
-            []
-            [ closeButton idx
-            , text " "
-            , StepEditor.view
-                (Signal.forwardTo addr (UpdateStepAt idx))
-                env
-                step
-            ]
+    viewStep idx (step, (beforeMapping, maybeError)) =
+      li []
+        [ closeButton idx
+        , text " "
+        , StepEditor.view
+            (Signal.forwardTo addr (UpdateStepAt idx))
+            beforeMapping
+            step
+        , text " "
+        , maybeError
+          |> Maybe.map (\err ->
+            span
+              [ style [("color", "red")] ]
+              [ text (toString err) ]
+          )
+          |> Maybe.withDefault (span [] [])
+        ]
   in
-    case scriptWithErrors of
+    case scriptWithIncrements of
       [] ->
         p [style [("font-style", "italic")]] [text "identity transform"]
 
       _ ->
-        scriptWithErrors
+        scriptWithIncrements
         |> List.indexedMap viewStep
         |> ul []
-
-
---viewColumns : Signal.Address Action -> SchemaMapping -> Html
---viewColumns addr schema =
---  let
---    numCols =
---      List.length schema
---  in
---    schema
---    |> List.indexedMap (\idx (name, expr) ->
---          li [] [viewColumn addr idx numCols (name, expr, exprType env expr)]
---    )
---    |> ul []
-
-
---viewColumn : Signal.Address Action -> Int -> Int -> (ColumnName, Expr, Result TypeError SoqlType) -> Html
---viewColumn addr idx length (name, expr, typeResult) =
---  span
---    []
---    [ button
---        [ onClick addr (AddStep (DropColumn name)) ]
---        [ text "x" ]
---    , button
---        [ onClick addr (AddStep (MoveColumnToPosition name (idx - 1)))
---        , disabled (idx == 0)
---        ]
---        [ text "^" ]
---    , button
---        [ onClick addr (AddStep (MoveColumnToPosition name (idx + 1)))
---        , disabled (idx == length - 1)
---        ]
---        [ text "v" ]
---    , text " "
---    , input
---        [ value name
---        , style [("font-weight", "bold")]
---        , Html.Events.Extra.onInput addr (\newName -> (AddStep (RenameColumn name newName)))
---        , size 20
---        ]
---        []
---    , text " "
---    , text (toString expr)
---    , text ": "
---    , span
---        [ style [("font-style", "italic")] ]
---        [ text (toString typeResult) ]
---    ]
 
 
 update : Action -> Model -> (Model, Effects Action)
@@ -306,7 +262,7 @@ update action model =
       (model, Effects.none)
 
     AddStep step ->
-      ( { model | transformScript = model.transformScript ++ [step] |> smooshScript }
+      ( { model | transformScript = model.transformScript ++ [step] }
       , Effects.none
       )
 
@@ -320,7 +276,7 @@ update action model =
       )
 
     RemoveStep idx ->
-      ( { model | transformScript = Util.removeAt idx model.transformScript |> smooshScript }
+      ( { model | transformScript = Util.removeAt idx model.transformScript }
       , Effects.none
       )
 
@@ -329,8 +285,8 @@ update action model =
       , Signal.send
           updateTransformMailbox.address
           (model.transformScript
-            |> stepsToNestedFuncs
-            |> encodeNestedFuncs)
+            |> Encode.stepsToNestedFuncs
+            |> Encode.encodeNestedFuncs)
         |> Task.map (always NoOp)
         |> Effects.task
       )
@@ -351,26 +307,21 @@ update action model =
           let
             (newTable, effects) =
               case model.table of
-                Just (tableScript, table) ->
-                  ( table
-                      |> Table.addChunk chunk
-                      |> (\newTable -> (tableScript, newTable))
-                      |> Just
+                Just table ->
+                  ( table |> Table.addChunk chunk |> Just
                   , Effects.none
                   )
 
                 Nothing ->
                   let
+                    -- probably should be a user-visible error if your table is empty
                     maybeTable =
                       Table.fromFirstChunk chunk
                   in
                     ( maybeTable
-                        |> Maybe.map (\table -> (model.transformScript, table))
                     , Signal.send
                         createHistogramsMailbox.address
-                        (maybeTable
-                          |> Maybe.map .columnNames
-                          |> Maybe.withDefault [])
+                        (columnNames model.table)
                       |> Task.map (always NoOp)
                       |> Effects.task
                     )
@@ -383,9 +334,7 @@ update action model =
           ( { model | aggregates = newAggs }
           , Signal.send
               updateHistogramsMailbox.address
-              ( model.table
-                  |> Maybe.map (snd >> .columnNames)
-                  |> Maybe.withDefault []
+              ( columnNames model.table
               , newAggs
               )
             |> Task.map (always NoOp)
@@ -393,11 +342,11 @@ update action model =
           )
 
 
-columnNames : Model -> List ColumnName
-columnNames model =
-  model.table
-    |> Maybe.map (snd >> .columnNames)
-    |> Maybe.withDefault []
+columnNames : Maybe Table -> List ColumnName
+columnNames maybeTable =
+  maybeTable
+  |> Maybe.map (\table -> table.mapping |> List.map (\(name, _, _) -> name))
+  |> Maybe.withDefault []
 
 
 app =

@@ -42,7 +42,7 @@ int addr currentValue =
         (Signal.message addr)
     , type' "number"
     , step "1"
-    , size 3
+    -- size has no effect http://stackoverflow.com/questions/22709792/html-input-type-number-wont-resize
     , value (toString currentValue)
     ]
     []
@@ -53,6 +53,7 @@ targetValue decoder =
   JsDec.at ["target", "value"] decoder
 
 
+-- TODO: if curVal is not in options, show it anyway?
 selector : Signal.Address String -> List String -> String -> Html
 selector addr options curVal =
   select
@@ -63,7 +64,7 @@ selector addr options curVal =
           JsDec.string)
         (Signal.message addr)
     ]
-    (options |> List.map (\opt ->
+    (""::options |> List.map (\opt ->
       option
         [ selected (opt == curVal) ]
         [ text opt ]

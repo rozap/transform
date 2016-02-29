@@ -86,11 +86,7 @@ update action model =
         ApplyFunction resultColName funcName args ->
           case applyFuncAction of
             UpdateFuncName newName ->
-              let
-                env =
-                  { columns = [], functions = envFunctions }
-              in
-                ApplyFunction resultColName newName (defaultArgsFor newName env)
+              ApplyFunction resultColName newName (defaultArgsFor newName)
 
             UpdateResultColumnName newColName ->
               ApplyFunction newColName funcName args
@@ -117,15 +113,15 @@ update action model =
           Debug.crash "unexpected action"
 
 
-view : Signal.Address Action -> Env -> Model -> Html
-view addr env model =
+view : Signal.Address Action -> TypedSchemaMapping -> Model -> Html
+view addr typedMapping model =
   case model of
     DropColumn columnName ->
       span []
         [ text "Drop column "
         , PrimitiveEditors.selector
             (Signal.forwardTo addr (DropColumnAction << UpdateDropColumnName))
-            env.columns
+            (columnNames typedMapping)
             columnName
         ]
 
@@ -134,7 +130,7 @@ view addr env model =
         [ text "Rename column "
         , PrimitiveEditors.selector
             (Signal.forwardTo addr (RenameColumnAction << UpdateFromColumnName))
-            env.columns
+            (columnNames typedMapping)
             fromName
         , text " to "
         , PrimitiveEditors.string
@@ -148,7 +144,7 @@ view addr env model =
         [ text "Move column "
         , PrimitiveEditors.selector
             (Signal.forwardTo addr (MoveColumnToPositionAction << UpdateColumnToMove))
-            env.columns
+            (columnNames typedMapping)
             colName
         , text " to index "
         , PrimitiveEditors.int
@@ -166,7 +162,7 @@ view addr env model =
         , text " = "
         , PrimitiveEditors.selector
             (Signal.forwardTo addr (ApplyFunctionAction << UpdateFuncName))
-            (env.functions |> Dict.keys)
+            (Model.functions |> Dict.keys)
             funcName
         , text "("
         , span
@@ -176,7 +172,7 @@ view addr env model =
                 span []
                   [ atomEditor
                       (Signal.forwardTo addr (ApplyFunctionAction << UpdateArgAt idx))
-                      env
+                      typedMapping
                       atom
                   , a [ href "#", onClick addr (ApplyFunctionAction (RemoveArgAt idx)) ]
                       [ text "X" ]
@@ -196,11 +192,11 @@ view addr env model =
         ]
 
 
-atomEditor : Signal.Address Atom -> Env -> Atom -> Html
-atomEditor addr env model =
+atomEditor : Signal.Address Atom -> TypedSchemaMapping -> Atom -> Html
+atomEditor addr typedMapping model =
   let
     firstCol =
-      env.columns |> List.head |> getMaybe "no columns"
+      (columnNames typedMapping) |> List.head |> getMaybe "no columns"
 
     switchToCol =
       a [ href "#", onClick addr (SourceColumn firstCol) ]
@@ -216,13 +212,12 @@ atomEditor addr env model =
           [ switchToLit
           , PrimitiveEditors.selector
               (Signal.forwardTo addr SourceColumn)
-              env.columns
+              (columnNames typedMapping)
               columnName
           ]
 
       StringLit val ->
-        span
-          []
+        span []
           [ switchToCol
           , PrimitiveEditors.string
               (Signal.forwardTo addr StringLit)
@@ -240,3 +235,59 @@ atomEditor addr env model =
 
       x ->
         text <| "TODO: edit " ++ toString x
+
+
+-- model-y stuff
+
+defaultArgsFor : FuncName -> List Atom
+defaultArgsFor funcName =
+  Model.functions
+  |> Dict.get funcName
+  |> Util.getMaybe "nonexistent function"
+  |> (\func ->
+    case func.arguments of
+      VarArgs ty ->
+        defaultAtomForType ty
+        |> List.repeat 3
+
+      NormalArgs nameAndTypePairs ->
+        nameAndTypePairs
+        |> List.map (snd >> defaultAtomForType)
+  )
+
+
+defaultAtomForType : SoqlType -> Atom
+defaultAtomForType ty =
+  case ty of
+    SoqlCheckbox ->
+      BoolLit True
+
+    SoqlDouble ->
+      DoubleLit 0
+
+    SoqlNumber ->
+      NumberLit 0
+
+    SoqlText ->
+      StringLit ""
+
+    _ ->
+      Debug.crash "TODO"
+
+    --SoqlMoney ->
+    --  XXX
+
+    --SoqlFloatingTimestamp ->
+    --  XXX
+
+    --SoqlLocation ->
+    --  XXX
+
+    --SoqlPoint ->
+    --  XXX
+
+    --SoqlPolygon ->
+    --  XXX
+
+    --SoqlLine ->
+    --  XXX

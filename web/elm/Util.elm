@@ -27,6 +27,19 @@ setAt item idx list =
   updateAt (always item) idx list
 
 
+getAt : Int -> List a -> Maybe a
+getAt idx list =
+  case (idx, list) of
+    (n, []) ->
+      Nothing
+
+    (0, x::xs) ->
+      Just x
+
+    (n, _::xs) ->
+      getAt (n-1) xs
+
+
 updateAt : (a -> a) -> Int -> List a -> Maybe (List a)
 updateAt f idx list =
   case (idx, list) of
@@ -76,3 +89,13 @@ getOks results =
           go (x::soFarErr) soFarOk xs
   in
     go [] [] results
+
+
+isJust : Maybe a -> Bool
+isJust maybe =
+  case maybe of
+    Just a ->
+      True
+
+    Nothing ->
+      False

@@ -31,40 +31,42 @@ defmodule Transform.Channels.Transform do
   end
 
   defp push_result(socket, result) do
-    case result.errors do
-      [] -> :ok
-      errors ->
-        Logger.info("Got error #{inspect errors}")
-        push(socket, "dataset:errors", %{result: result.errors})
-    end
-
     Aggregator.push(socket.assigns.aggregator, socket, result.aggregate)
 
     {:noreply, socket}
   end
 
-  defp push_progress(socket, result) do
+  defp push_progress(socket, stage, result) do
     chunk_size = Transform.Api.BasicTable.chunk_size
     push(socket, "dataset:progress", %{
       sequenceNumber: result.chunk.sequence_number,
       errors: result.errors,
-      stage: "transform"
+      stage: stage
     })
+
+    {:noreply, socket}
   end
 
   def handle_info({:transformed, basic_table, result}, %{assigns: %{seen: seen}} = socket) when seen < @threshold do
+    Logger.info "derp 2"
     socket = assign(socket, :seen, seen + length(result.transformed))
 
     push(socket, "dataset:transform", %{result: result.transformed})
-    push_progress(socket, result)
+    push_progress(socket, "transform", result)
     push_result(socket, result)
   end
 
   def handle_info({:transformed, basic_table, result}, socket) do
+    Logger.info "derp 1"
     seen = socket.assigns.seen
     socket = assign(socket, :seen, seen + length(result.transformed))
-    push_progress(socket, result)
+    push_progress(socket, "transform", result)
     push_result(socket, result)
+  end
+
+  def handle_info({:basic_table_chunk_written, result}, socket) do
+    Logger.info "herp"
+    push_progress(socket, "extract", result)
   end
 
 end

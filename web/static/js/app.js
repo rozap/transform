@@ -115,7 +115,6 @@ $(() => {
   channel.on("dataset:progress", (evt) =>
     elmModule.ports.phoenixDatasetProgress.send(evt)
   );
-  channel.on("dataset:errors", (evt) => elmModule.ports.phoenixDatasetErrors.send(evt.result));
   channel.on("dataset:transform", (evt) =>
     elmModule.ports.phoenixDatasetTransform.send(
       evt.result.map((row) =>

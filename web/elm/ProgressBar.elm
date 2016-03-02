@@ -74,14 +74,13 @@ chunkDetail model =
   |> Maybe.map (\hoveredChunk ->
     model.chunks
     |> Dict.get hoveredChunk
-    |> Util.getMaybe "chunk not there"
     |> (\chunkState ->
       case chunkState of
-        Extracted {numRows} ->
+        Just (Extracted {numRows}) ->
           p []
             [ text <| "Chunk " ++ toString hoveredChunk ++ ": " ++ toString numRows ++ " rows" ]
 
-        Transformed {numRows, errors} ->
+        Just (Transformed {numRows, errors}) ->
           div []
             [ p []
                 [ text <|
@@ -92,6 +91,9 @@ chunkDetail model =
             , ul []
                 (errors |> List.map (\err -> li [] [text (toString err)]))
             ]
+
+        Nothing ->
+          p [] [ text "Still writing basic table chunk to S3" ]
     )
   )
   |> Maybe.withDefault (span [] [])

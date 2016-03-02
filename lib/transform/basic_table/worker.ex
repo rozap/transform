@@ -25,6 +25,15 @@ defmodule Transform.BasicTable.Worker do
     }}
   end
 
+  defp dispatch(dataset_id, payload) do
+    case :pg2.get_members(dataset_id) do
+      {:error, {:no_such_group, _}} -> {:error, :nobody_cares}
+      listeners -> Enum.each(listeners, fn listener ->
+        send listener, payload
+      end)
+    end
+  end
+
   defp handle_chunk({:push, job, basic_table, sequence_number, chunk}) do
     location = BlobStore.write_basic_table_chunk!(job.dataset, chunk)
 
@@ -35,6 +44,10 @@ defmodule Transform.BasicTable.Worker do
     }) do
       {:ok, entry} ->
         Worker.push(job, basic_table, entry)
+        dispatch(job.dataset, {:basic_table_chunk_written, %{
+          chunk: entry,
+          errors: []
+        }})
         :ok
       err -> err
     end

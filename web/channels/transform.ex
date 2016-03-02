@@ -48,7 +48,6 @@ defmodule Transform.Channels.Transform do
   end
 
   def handle_info({:transformed, basic_table, result}, %{assigns: %{seen: seen}} = socket) when seen < @threshold do
-    Logger.info "derp 2"
     socket = assign(socket, :seen, seen + length(result.transformed))
 
     push(socket, "dataset:transform", %{result: result.transformed})
@@ -57,7 +56,6 @@ defmodule Transform.Channels.Transform do
   end
 
   def handle_info({:transformed, basic_table, result}, socket) do
-    Logger.info "derp 1"
     seen = socket.assigns.seen
     socket = assign(socket, :seen, seen + length(result.transformed))
     push_progress(socket, "transform", result)
@@ -65,7 +63,6 @@ defmodule Transform.Channels.Transform do
   end
 
   def handle_info({:basic_table_chunk_written, result}, socket) do
-    Logger.info "herp"
     push_progress(socket, "extract", result)
   end
 

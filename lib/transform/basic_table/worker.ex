@@ -35,21 +35,28 @@ defmodule Transform.BasicTable.Worker do
   end
 
   defp handle_chunk({:push, job, basic_table, sequence_number, chunk}) do
-    location = BlobStore.write_basic_table_chunk!(job.dataset, chunk)
-
-    case Repo.insert(%Chunk{
-      basic_table_id: basic_table.id,
-      sequence_number: sequence_number,
-      location: location
-    }) do
-      {:ok, entry} ->
-        Worker.push(job, basic_table, entry)
-        dispatch(job.dataset, {:basic_table_chunk_written, %{
-          chunk: entry,
-          errors: []
-        }})
-        :ok
-      err -> err
+    try do
+      Logger.info "trying to write chunk #{sequence_number} for basic_table #{basic_table.id}"
+      location = BlobStore.write_basic_table_chunk!(job.dataset, chunk)
+      case Repo.insert(%Chunk{
+        basic_table_id: basic_table.id,
+        sequence_number: sequence_number,
+        location: location
+      }) do
+        {:ok, entry} ->
+          Worker.push(job, basic_table, entry)
+          dispatch(job.dataset, {:basic_table_chunk_written, %{
+            chunk: entry,
+            errors: []
+          }})
+          Logger.info "wrote chunk #{sequence_number} for table #{basic_table.id}"
+          :ok
+        err -> err
+      end
+    rescue
+      err ->
+        push(job, basic_table, sequence_number, chunk)
+        Logger.error "retrying chunk #{sequence_number} for table #{basic_table.id}"
     end
   end
 

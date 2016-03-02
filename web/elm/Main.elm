@@ -3,7 +3,7 @@ module Main where
 import String
 import Task exposing (Task)
 import Dict exposing (Dict)
-import Json.Decode as JsDec
+import Json.Decode as JsDec exposing ((:=))
 import Json.Encode as JsEnc
 
 import Html exposing (..)
@@ -19,13 +19,14 @@ import Table exposing (Table)
 import Util
 import StepEditor
 import Encode
+import ProgressBar
+import ProgressBar.Model
 
 
 type alias Model =
   { transformScript : TransformScript
-  , errors : List String
   , table : Maybe Table
-  , rowsProcessed : Int
+  , progressBar : ProgressBar.Model.Model
   , aggregates : List (ColumnName, JsDec.Value)
   }
 
@@ -36,25 +37,40 @@ type Action
   | RemoveStep Int -- index
   | SaveTransform
   | ServerEvent ServerEvent
+  | ProgressBarAction ProgressBar.Model.Action
   | NoOp
 
 
 type ServerEvent
-  = ProgressEvent Int
-  | ErrorsEvent (List String)
+  = ProgressEvent ProgressEvent
   | TransformChunkEvent (List (List (ColumnName, String)))
   | AggregateUpdate (List (ColumnName, JsDec.Value))
+
+
+type ProgressEvent
+  = BasicTableChunkWritten
+      { sequenceNumber : Int
+      , errors : List (ProgressBar.Model.LineNo, ProgressBar.Model.ExtractError)
+      }
+  | ChunkTransformed
+      { sequenceNumber : Int
+      , errors : List (ProgressBar.Model.LineNo, ProgressBar.Model.TransformError)
+      }
 
 
 type alias Histogram =
   Dict String Int
 
 
+-- match web/api/basic_table.ex (TODO: server should send this along)
+chunkSize =
+  512
+
+
 initModel =
   { transformScript = []
-  , errors = []
+  , progressBar = ProgressBar.Model.initModel chunkSize
   , table = Nothing
-  , rowsProcessed = 0
   , aggregates = []
   }
 
@@ -85,9 +101,10 @@ view addr model =
                 [ text "Save Transform & Get Preview" ]
             ]
         , div [ class "pure-u-1-3", id "errors" ]
-            [ viewErrors model ]
-        , div [ class "pure-u-1-1" ]
-            [ viewProgress model ]
+            [ ProgressBar.view
+                (Signal.forwardTo addr ProgressBarAction)
+                model.progressBar
+            ]
         ]
       , table [ id "histograms" ] []
       , div [ id "results" ]
@@ -108,22 +125,6 @@ view addr model =
             |> Maybe.withDefault (p [] [text "No results yet"])
           ]
       ]
-
-
-viewProgress : Model -> Html
-viewProgress model =
-  let
-    goodRows =
-      model.rowsProcessed
-
-    badRows =
-      List.length model.errors
-
-    totalRows =
-      goodRows + badRows
-  in
-    text <|
-      toString goodRows ++ " good rows + " ++ toString badRows ++ " bad rows = " ++ toString totalRows ++ " total"
 
 
 viewTable : Signal.Address Action -> Table -> Html
@@ -180,13 +181,6 @@ viewColumnHeader addr (name, expr, ty) =
         ]
         [ text (toString expr) ]
     ]
-
-
-viewErrors : Model -> Html
-viewErrors model =
-  model.errors
-  |> List.map (\error -> li [] [text error])
-  |> ul [class "errors"]
 
 
 viewTransformEditor : Signal.Address Action
@@ -281,7 +275,10 @@ update action model =
       )
 
     SaveTransform ->
-      ( { model | table = Nothing, errors = [], rowsProcessed = 0 }
+      ( { model
+            | table = Nothing
+            , progressBar = ProgressBar.Model.initModel chunkSize
+        }
       , Signal.send
           updateTransformMailbox.address
           (model.transformScript
@@ -291,17 +288,41 @@ update action model =
         |> Effects.task
       )
 
+    ProgressBarAction action ->
+      ( { model | progressBar = ProgressBar.update action model.progressBar }
+      , Effects.none
+      )
+
     ServerEvent evt ->
       case evt of
-        ProgressEvent rows ->
-          ( { model | rowsProcessed = Basics.max model.rowsProcessed rows }
-          , Effects.none
-          )
+        ProgressEvent event ->
+          let
+            -- TODO: real line numbers
+            (chunkState, sequenceNumber) =
+              case event of
+                BasicTableChunkWritten {errors, sequenceNumber} ->
+                  ( ProgressBar.Model.Extracted
+                      { numRows = chunkSize
+                      , errors = errors
+                      }
+                  , sequenceNumber
+                  )
 
-        ErrorsEvent errors ->
-          ( { model | errors = model.errors ++ errors }
-          , Effects.none
-          )
+                ChunkTransformed {errors, sequenceNumber} ->
+                  ( ProgressBar.Model.Transformed
+                      { numRows = chunkSize
+                      , errors = errors
+                      }
+                  , sequenceNumber
+                  )
+
+            action =
+              ProgressBar.Model.AddChunkState sequenceNumber chunkState
+          in
+            ( { model | progressBar =
+                  ProgressBar.update action model.progressBar }
+            , Effects.none
+            )
 
         TransformChunkEvent chunk ->
           let
@@ -321,7 +342,7 @@ update action model =
                     ( maybeTable
                     , Signal.send
                         createHistogramsMailbox.address
-                        (columnNames model.table)
+                        (columnNames maybeTable)
                       |> Task.map (always NoOp)
                       |> Effects.task
                     )
@@ -355,8 +376,14 @@ app =
     , view = view
     , update = update
     , inputs =
-        [ Signal.map (ServerEvent << ProgressEvent) phoenixDatasetProgress
-        , Signal.map (ServerEvent << ErrorsEvent) phoenixDatasetErrors
+        [ Signal.map
+            (\rawEvent ->
+              rawEvent
+              |> decodeProgress
+              |> Util.getMaybe "unrecognized stage"
+              |> ProgressEvent
+              |> ServerEvent)
+            phoenixDatasetProgress
         , Signal.map (ServerEvent << TransformChunkEvent) phoenixDatasetTransform
         , Signal.map (ServerEvent << AggregateUpdate) phoenixDatasetAggregate
         ]
@@ -372,9 +399,35 @@ port tasks =
   app.tasks
 
 
-port phoenixDatasetProgress : Signal Int
+port phoenixDatasetProgress : Signal RawProgressEvent
 
-port phoenixDatasetErrors : Signal (List String)
+
+type alias RawProgressEvent =
+  { stage : String
+  , sequenceNumber : Int
+  , errors : List String
+  }
+
+
+decodeProgress : RawProgressEvent -> Maybe ProgressEvent
+decodeProgress rawEvent =
+  case rawEvent.stage of
+    -- TODO real line numbers
+    "extract" ->
+      Just (BasicTableChunkWritten
+        { sequenceNumber = rawEvent.sequenceNumber
+        , errors = rawEvent.errors |> List.map (\e -> (0, e))
+        })
+
+    "transform" ->
+      Just (ChunkTransformed
+        { sequenceNumber = rawEvent.sequenceNumber
+        , errors = rawEvent.errors |> List.map (\e -> (0, e))
+        })
+
+    _ ->
+      Nothing
+
 
 port phoenixDatasetTransform : Signal (List (List (ColumnName, String)))
 

@@ -45,7 +45,11 @@ defmodule Transform.Channels.Transform do
 
   defp push_progress(socket, result) do
     chunk_size = Transform.Api.BasicTable.chunk_size
-    push(socket, "dataset:progress", %{rows: result.chunk.sequence_number * chunk_size})
+    push(socket, "dataset:progress", %{
+      sequenceNumber: result.chunk.sequence_number,
+      errors: result.errors,
+      stage: "transform"
+    })
   end
 
   def handle_info({:transformed, basic_table, result}, %{assigns: %{seen: seen}} = socket) when seen < @threshold do

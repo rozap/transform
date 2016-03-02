@@ -102,14 +102,19 @@ $(() => {
     });
 
   let elmModule = Elm.embed(Elm.Main, document.getElementById('elm-container'), {
-    phoenixDatasetProgress: 0,
-    phoenixDatasetErrors: [],
+    // these get ignored
+    phoenixDatasetProgress: {
+      sequenceNumber: 0,
+      errors: [],
+      stage: "transform"
+    },
     phoenixDatasetTransform: [],
     phoenixDatasetAggregate: []
   });
   // phoenix channels => elm
-  channel.on("dataset:progress", (evt) => elmModule.ports.phoenixDatasetProgress.send(evt.rows));
-  channel.on("dataset:errors", (evt) => elmModule.ports.phoenixDatasetErrors.send(evt.result));
+  channel.on("dataset:progress", (evt) =>
+    elmModule.ports.phoenixDatasetProgress.send(evt)
+  );
   channel.on("dataset:transform", (evt) =>
     elmModule.ports.phoenixDatasetTransform.send(
       evt.result.map((row) =>

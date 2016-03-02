@@ -35,7 +35,7 @@ config :transform, :workers,
   ],
   basic_table: [
     count: 8,
-    high_water_mark: 8
+    high_water_mark: 16
   ]
 
 config :transform, :herder,

@@ -38,8 +38,8 @@ defmodule Transform.Executor.Worker do
   defp read_from_store(chunkref) do
     chunkref.location
     |> BlobStore.read!
-    |> CSV.decode
-    |> Enum.into([])
+    # |> CSV.decode
+    # |> Enum.into([])
   end
 
   defp transform_row(_, _, [""], _, _), do: :ignore

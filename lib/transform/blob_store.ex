@@ -41,11 +41,7 @@ defmodule Transform.BlobStore do
     |> Path.join(relative)
 
     device = File.open!(absolute, [:write])
-
-    chunk
-    |> CSV.encode
-    |> Enum.each(fn line -> IO.binwrite(device, line) end)
-
+    IO.binwrite(device, :erlang.term_to_binary(chunk))
     File.close(device)
 
     relative
@@ -62,7 +58,9 @@ defmodule Transform.BlobStore do
   def read!(relative) do
     Application.get_env(:transform, :blobs)[:path]
     |> Path.join(relative)
-    |> File.stream!
+    |> File.read!
+    |> :erlang.binary_to_term
+
   end
 
 end

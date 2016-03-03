@@ -30,6 +30,17 @@ update action model =
             , errors = model.errors + newErrs
         }
 
+    MarkAggregated idx ->
+      case model.chunks |> Dict.get idx of
+        Just (Transformed chunk) ->
+          { model | chunks =
+              model.chunks |> Dict.insert idx (Transformed { chunk | aggregated = True })
+          }
+
+        x ->
+          let d = Debug.log "MarkAggregated for unexpected chunk" x
+          in model
+
     HoverChunk idx ->
       { model | hoveredChunk = Just idx }
 
@@ -78,7 +89,10 @@ chunkDetail model =
       case chunkState of
         Just (Extracted {numRows}) ->
           p []
-            [ text <| "Chunk " ++ toString hoveredChunk ++ ": " ++ toString numRows ++ " rows" ]
+            [ text <|
+                "Chunk " ++ toString hoveredChunk ++ ": " ++
+                toString numRows ++ " rows"
+            ]
 
         Just (Transformed {numRows, errors}) ->
           div []
@@ -102,15 +116,15 @@ chunkDetail model =
 viewChunk : Signal.Address Action -> Int -> Maybe ChunkState -> Html
 viewChunk addr idx maybeState =
   let
-    color =
+    (color, textContent) =
       case maybeState of
         Nothing ->
-          Color.white
+          (Color.white, " ")
 
         Just (Extracted _) ->
-          Color.grey
+          (Color.grey, " ")
 
-        (Just (Transformed {numRows, errors})) ->
+        (Just (Transformed {numRows, aggregated, errors})) ->
           let
             errFrac =
               (List.length errors |> toFloat) / (numRows |> toFloat)
@@ -118,17 +132,23 @@ viewChunk addr idx maybeState =
             displayFrac =
               Basics.min 1 (errFrac * 1000)
           in
-            Color.rgb (displayFrac * 255 |> round) ((1 - displayFrac) * 255 |> round) 0
+            ( Color.rgb
+                (displayFrac * 255 |> round)
+                ((1 - displayFrac) * 255 |> round)
+                0
+            , if aggregated then "A" else " "
+            )
   in
     span
       [ style
           [ ("white-space", "pre")
           , ("background-color", colorToCss color)
+          , ("font-family", "monospace")
           ]
       , onMouseEnter addr (HoverChunk idx)
       , onMouseLeave addr UnHoverChunk
       ]
-      [ text "  " ]
+      [ text textContent ]
 
 
 colorToCss : Color -> String

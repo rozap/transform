@@ -21,8 +21,15 @@ initModel chunkSize =
 
 
 type ChunkState
-  = Extracted { numRows : Int, errors : List (LineNo, ExtractError) }
-  | Transformed { numRows : Int, errors : List (LineNo, TransformError) }
+  = Extracted
+      { numRows : Int
+      , errors : List (LineNo, ExtractError)
+      }
+  | Transformed
+      { numRows : Int
+      , aggregated : Bool
+      , errors : List (LineNo, TransformError)
+      }
 
 
 type alias LineNo =
@@ -44,5 +51,6 @@ type alias TransformError
 
 type Action
   = AddChunkState Int ChunkState
+  | MarkAggregated Int
   | HoverChunk Int
   | UnHoverChunk

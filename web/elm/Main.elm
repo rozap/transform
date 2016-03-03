@@ -44,7 +44,13 @@ type Action
 type ServerEvent
   = ProgressEvent ProgressEvent
   | TransformChunkEvent (List (List (ColumnName, String)))
-  | AggregateUpdate (List (ColumnName, JsDec.Value))
+  | AggregateUpdate AggregateUpdateAttrs
+
+
+type alias AggregateUpdateAttrs =
+  { sequenceNumber : Int
+  , histograms : (List (ColumnName, JsDec.Value))
+  }
 
 
 type ProgressEvent
@@ -311,6 +317,7 @@ update action model =
                 ChunkTransformed {errors, sequenceNumber} ->
                   ( ProgressBar.Model.Transformed
                       { numRows = chunkSize
+                      , aggregated = False
                       , errors = errors
                       }
                   , sequenceNumber
@@ -351,12 +358,18 @@ update action model =
             , effects
             )
 
-        AggregateUpdate newAggs ->
-          ( { model | aggregates = newAggs }
+        AggregateUpdate {sequenceNumber, histograms} ->
+          ( { model
+                | aggregates = histograms
+                , progressBar =
+                    ProgressBar.update
+                      (ProgressBar.Model.MarkAggregated sequenceNumber)
+                      model.progressBar
+            }
           , Signal.send
               updateHistogramsMailbox.address
               ( columnNames model.table
-              , newAggs
+              , histograms
               )
             |> Task.map (always NoOp)
             |> Effects.task
@@ -401,7 +414,6 @@ port tasks =
 
 port phoenixDatasetProgress : Signal RawProgressEvent
 
-
 type alias RawProgressEvent =
   { stage : String
   , sequenceNumber : Int
@@ -431,7 +443,7 @@ decodeProgress rawEvent =
 
 port phoenixDatasetTransform : Signal (List (List (ColumnName, String)))
 
-port phoenixDatasetAggregate : Signal (List (ColumnName, JsDec.Value))
+port phoenixDatasetAggregate : Signal AggregateUpdateAttrs
 
 
 createHistogramsMailbox =

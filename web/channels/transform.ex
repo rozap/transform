@@ -31,7 +31,10 @@ defmodule Transform.Channels.Transform do
   end
 
   defp push_result(socket, result) do
-    Aggregator.push(socket.assigns.aggregator, socket, result.aggregate)
+    Aggregator.push(
+      socket.assigns.aggregator, socket,
+      result.chunk.sequence_number, result.aggregate
+    )
 
     {:noreply, socket}
   end

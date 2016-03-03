@@ -52,17 +52,20 @@ defmodule Transform.Channels.Transform.Aggregator do
     |> Enum.into(%{})
   end
 
-  def handle_cast({:aggregate, socket, chunk}, state) do
+  def handle_cast({:aggregate, socket, sequence_number, chunk}, state) do
     counters = aggregate(chunk, state.counters)
 
     state = put_in(state[:counters], counters)
 
-    Channel.push(socket, "dataset:aggregate", to_serializable(state.counters))
+    Channel.push(socket, "dataset:aggregate", %{
+      sequenceNumber: sequence_number,
+      histograms: to_serializable(state.counters)
+    })
 
     {:noreply, state}
   end
 
-  def push(pid, socket, aggregate) do
-    GenServer.cast(pid, {:aggregate, socket, aggregate})
+  def push(pid, socket, sequence_number, aggregate) do
+    GenServer.cast(pid, {:aggregate, socket, sequence_number, aggregate})
   end
 end

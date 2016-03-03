@@ -109,7 +109,10 @@ $(() => {
       stage: "transform"
     },
     phoenixDatasetTransform: [],
-    phoenixDatasetAggregate: []
+    phoenixDatasetAggregate: {
+      sequenceNumber: 0,
+      histograms: []
+    }
   });
   // phoenix channels => elm
   channel.on("dataset:progress", (evt) =>
@@ -123,11 +126,12 @@ $(() => {
     )
   );
   channel.on("dataset:aggregate", (evt) =>
-    elmModule.ports.phoenixDatasetAggregate.send(
-      Object.keys(evt).map((colName) =>
-        [colName, evt[colName]]
-      )
-    )
+    elmModule.ports.phoenixDatasetAggregate.send({
+      histograms: Object.keys(evt.histograms).map((colName) =>
+        [colName, evt.histograms[colName]]
+      ),
+      sequenceNumber: evt.sequenceNumber
+    })
   );
   // elm => histogram stuff
   let histograms = {};

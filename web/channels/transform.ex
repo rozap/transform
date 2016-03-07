@@ -2,10 +2,14 @@ defmodule Transform.Channels.Transform do
   use Phoenix.Channel
   require Logger
   alias Transform.Compiler
+  alias Transform.JobTrigger
   alias Transform.Channels.Transform.Aggregator
+  alias Transform.Job
+  alias Transform.Repo
+  import Ecto.Query
 
   # Never show more than N rows to the user
-  @threshold 2048
+  @threshold 16
 
   def join("transform:" <> dataset_id, _message, socket) do
     Logger.info("Joining transform #{dataset_id}")
@@ -19,14 +23,19 @@ defmodule Transform.Channels.Transform do
     |> assign(:aggregator, ag_pid)
     |> assign(:seen, 0)
 
+    JobTrigger.bind
+
     {:ok, socket}
   end
 
   def handle_in("transform", %{"transforms" => transforms}, socket) do
     Logger.info("Compile #{inspect transforms}")
-    Compiler.compile(socket.assigns.dataset_id, transforms)
-
-    Logger.error("TODO: retrigger job")
+    case Compiler.compile(socket.assigns.dataset_id, transforms) do
+      {:ok, {job, basic_table, chunks}} ->
+        JobTrigger.trigger(job, basic_table, chunks)
+      {:error, reason} ->
+        Logger.error("Error while compiling: #{inspect reason}")
+    end
 
     {:reply, :ok, socket}
   end

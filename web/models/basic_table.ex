@@ -48,4 +48,12 @@ defmodule Transform.BasicTable do
     model
     |> cast(params, [:job_id, :meta], [])
   end
+
+  def latest_for(job) do
+    job_id = job.id
+    from bt in __MODULE__,
+      where: bt.job_id == ^job_id,
+      select: bt,
+      order_by: [desc: bt.inserted_at]
+  end
 end

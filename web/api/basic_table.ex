@@ -4,11 +4,11 @@ defmodule Transform.Api.BasicTable do
   alias Transform.Job
   import Ecto.Query
 
-  @chunk_size 512
-
   def init(args), do: args
 
-  def chunk_size, do: @chunk_size
+  def chunk_size do
+    Application.get_env(:transform, :basic_table)[:chunk_size]
+  end
 
   def parse_chunk(bin) do
     bin
@@ -33,11 +33,12 @@ defmodule Transform.Api.BasicTable do
     {:ok, bt} = Repo.insert(%Transform.BasicTable{
       meta: %{columns: columns}, job_id: job.id
     })
+    IO.puts "insert basic table #{job.id}"
     bt
   end
 
   def call(conn, args) do
-
+    IO.inspect conn.params
     dataset_id = conn.params["dataset_id"]
 
     case Repo.insert(%Transform.Upload{}) do
@@ -51,12 +52,11 @@ defmodule Transform.Api.BasicTable do
           {Enum.take(tok, length(tok) - 1), acc <> last}
         end)
         |> CSV.decode
-        |> Stream.chunk(@chunk_size, @chunk_size, [])
+        |> Stream.chunk(chunk_size, chunk_size, [])
         |> Stream.transform(nil, fn
           [columns | rows], nil ->
             unclaimed_jobs = from j in Job,
-              where:
-                j.dataset == ^dataset_id,
+              where: j.dataset == ^dataset_id,
               order_by: [desc: j.updated_at],
               select: j
 

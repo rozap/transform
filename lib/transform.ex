@@ -15,7 +15,9 @@ defmodule Transform do
       supervisor(Transform.BasicTableSupervisor, []), # Creates basic table from chunks.
       supervisor(Transform.Compiler, []), # Takes an AST and transforms it into a function
       supervisor(Transform.Herder, []),
-      supervisor(Transform.Zookeeper, [])
+      supervisor(Transform.Zookeeper, []),
+      supervisor(Transform.Metrics, []),
+      supervisor(Transform.JobTrigger, [])
     ]
 
     # See http://elixir-lang.org/docs/stable/elixir/Supervisor.html

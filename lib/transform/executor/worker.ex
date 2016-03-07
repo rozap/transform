@@ -122,12 +122,16 @@ defmodule Transform.Executor.Worker do
 
         location = BlobStore.write_transformed_chunk!(job.dataset, rows)
 
-        cset = Chunk.changeset(chunk, %{
+        #let it crash here
+        {:ok, chunk} = chunk
+        |> Chunk.changeset(%{
           completed_at: Ecto.DateTime.utc,
           completed_location: location
         })
-        Repo.update(cset)
-        # Logger.info("Finished working on #{chunk.sequence_number} for #{job.id}")
+        |> Repo.update
+
+        Transform.Metrics.chunk_finished(chunk)
+        # Logger.info("Finished working on #{chunk.completed_at} #{chunk.inserted_at}")
       _ ->
         Logger.warn("Chunk #{chunk.id} has already been completed")
 

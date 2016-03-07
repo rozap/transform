@@ -49,6 +49,10 @@ defmodule Transform.Herder do
       )
     end)
 
+    if length(orphaned_set) > 0 do
+      Logger.info("Chunk herder found #{length orphaned_set} lonely chunks")
+    end
+
     {:noreply, state}
   end
 

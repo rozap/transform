@@ -1,16 +1,17 @@
 # defmodule Transform.BlobStore do
 
-#   defp write!(kind, ds_id, chunk) do
-#     relative = "#{kind}/#{ds_id}_chunk_#{UUID.uuid4}.csv"
+#   @config [
+#     s3_follow_redirect: true
+#   ]
 
-#     encoded = chunk
-#     |> CSV.encode
-#     |> Enum.join
+#   defp write!(kind, ds_id, chunk) do
+#     relative = "#{kind}/#{ds_id}_chunk_#{UUID.uuid4}"
 
 #     :erlcloud_s3.put_object(
 #       to_char_list(Application.get_env(:transform, :blobs)[:bucket]),
 #       to_char_list(relative),
-#       encoded
+#       :erlang.term_to_binary(chunk),
+#       @config
 #     )
 
 #     relative
@@ -27,9 +28,10 @@
 #   def read!(relative) do
 #     :erlcloud_s3.get_object(
 #       to_char_list(Application.get_env(:transform, :blobs)[:bucket]),
-#       to_char_list(relative)
+#       to_char_list(relative),
+#       @config
 #     )[:content]
-#     |> String.split("\n")
+#     |> :erlang.binary_to_term
 #   end
 
 # end

@@ -42,10 +42,10 @@ defmodule Transform.BasicTable.Worker do
       sequence_number: sequence_number,
       location: location
     }) do
-      {:ok, entry} ->
-        Worker.push(job, basic_table, entry)
+      {:ok, chunk_entry} ->
+        Worker.push(job, basic_table, chunk_entry)
         dispatch(job.dataset, {:basic_table_chunk_written, %{
-          chunk: entry,
+          chunk: chunk_entry,
           errors: []
         }})
         :ok

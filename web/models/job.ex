@@ -13,4 +13,11 @@ defmodule Transform.Job do
     model
     |> cast(params, [:dataset], [])
   end
+
+  def latest_for(dataset_id) do
+    from j in __MODULE__,
+      where: j.dataset == ^dataset_id,
+      select: j,
+      order_by: [desc: j.inserted_at]
+  end
 end

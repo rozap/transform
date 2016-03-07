@@ -34,13 +34,17 @@ config :transform, :workers,
     high_water_mark: 8
   ],
   basic_table: [
-    count: 8,
-    high_water_mark: 8
+    count: 16,
+    high_water_mark: 16
   ]
 
+config :transform, :basic_table,
+  chunk_size: 512
+
 config :transform, :herder,
-  interval: 60,
+  interval: 4,
   max_attempts: 4
 
 config :transform, :blobs,
-  bucket: "publishing-stuff"
+  bucket: "socrata-publishing-stuff",
+  path: "/tmp"

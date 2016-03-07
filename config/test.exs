@@ -17,3 +17,8 @@ config :transform, Transform.Repo,
   database: "transform_test",
   hostname: "localhost",
   pool: Ecto.Adapters.SQL.Sandbox
+
+config :transform, :zookeeper,
+  address: :"localhost",
+  port: 2181
+

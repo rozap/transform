@@ -15,4 +15,6 @@ defmodule Transform.Chunk do
     model
     |> cast(params, [], [:attempt_number, :completed_at, :completed_location])
   end
+
+
 end

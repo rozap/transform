@@ -17,12 +17,11 @@ defmodule Transform.Herder do
   end
 
   def handle_info(:tick, state) do
-    now = :calendar.local_time
     max_attempts = Application.get_env(:transform, :herder)[:max_attempts]
     timeout = Application.get_env(:transform, :herder)[:interval]
 
     cutoff = Calendar.DateTime.now_utc
-    |> Calendar.DateTime.advance!(timeout)
+    |> Calendar.DateTime.advance!(-timeout)
 
 
     orphaned_set = Repo.all(
@@ -36,9 +35,9 @@ defmodule Transform.Herder do
 
     Enum.each(orphaned_set, fn chunk ->
 
-      cset = Chunk.changeset(chunk, %{attempt_number: chunk.attempt_number + 1})
-
-      Repo.update!(cset)
+      chunk
+      |> Chunk.changeset(%{attempt_number: chunk.attempt_number + 1})
+      |> Repo.update!
 
       basic_table = Repo.get!(Transform.BasicTable, chunk.basic_table_id)
       job = Repo.get!(Transform.Job, basic_table.job_id)
@@ -49,6 +48,10 @@ defmodule Transform.Herder do
         chunk
       )
     end)
+
+    if length(orphaned_set) > 0 do
+      Logger.info("Chunk herder found #{length orphaned_set} lonely chunks")
+    end
 
     {:noreply, state}
   end

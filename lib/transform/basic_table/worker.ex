@@ -71,7 +71,8 @@ defmodule Transform.BasicTable.Worker do
     Backoff.try_until(
       __MODULE__,
       {:push, job, basic_table, chunk_num, chunk},
-      10_000
+      10_000,
+      true
     )
   end
 end

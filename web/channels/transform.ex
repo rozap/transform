@@ -40,10 +40,13 @@ defmodule Transform.Channels.Transform do
     {:reply, :ok, socket}
   end
 
-  defp push_result(socket, result) do
+  defp push_result(socket, result, basic_table) do
     Aggregator.push(
-      socket.assigns.aggregator, socket,
-      result.chunk.sequence_number, result.aggregate
+      socket.assigns.aggregator,
+      socket,
+      result.chunk.sequence_number,
+      result.aggregate,
+      basic_table.job_id
     )
 
     {:noreply, socket}
@@ -63,16 +66,17 @@ defmodule Transform.Channels.Transform do
   def handle_info({:transformed, basic_table, result}, %{assigns: %{seen: seen}} = socket) when seen < @threshold do
     socket = assign(socket, :seen, seen + length(result.transformed))
 
-    push(socket, "dataset:transform", %{result: result.transformed})
+    payload = %{result: result.transformed, job: basic_table.job_id}
+    push(socket, "dataset:transform", payload)
     push_progress(socket, "transform", result)
-    push_result(socket, result)
+    push_result(socket, result, basic_table)
   end
 
   def handle_info({:transformed, basic_table, result}, socket) do
     seen = socket.assigns.seen
     socket = assign(socket, :seen, seen + length(result.transformed))
     push_progress(socket, "transform", result)
-    push_result(socket, result)
+    push_result(socket, result, basic_table)
   end
 
   def handle_info({:basic_table_chunk_written, result}, socket) do

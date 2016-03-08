@@ -3,7 +3,7 @@ defmodule Transform.Mixfile do
 
   def project do
     [app: :transform,
-     version: "0.0.11",
+     version: "0.0.13",
      elixir: "~> 1.2",
      elixirc_paths: elixirc_paths(Mix.env),
      compilers: [:phoenix, :gettext] ++ Mix.compilers,

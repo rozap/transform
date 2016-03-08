@@ -4,10 +4,15 @@ defmodule Transform.Channels.Transform.Aggregator do
 
 
   def init(_) do
-    {:ok, %{
+    {:ok, init_state}
+  end
+
+  defp init_state do
+    %{
       counters: %{},
+      job_id: nil,
       chunks: 0
-    }}
+    }
   end
 
   def aggregate(chunk_agg, counters) do
@@ -32,21 +37,32 @@ defmodule Transform.Channels.Transform.Aggregator do
     end)
     |> Enum.into(%{})
   end
-  
-  def handle_cast({:aggregate, socket, sequence_number, chunk}, state) do
-    counters = aggregate(chunk, state.counters)
+
+  defp update_state(state, socket, seq, partial) do
+    counters = aggregate(partial, state.counters)
 
     state = put_in(state[:counters], counters)
 
     Channel.push(socket, "dataset:aggregate", %{
-      sequenceNumber: sequence_number,
+      sequenceNumber: seq,
       histograms: to_serializable(state.counters)
     })
+    state
+  end
+
+  def handle_cast({:aggregate, socket, seq, partial, job_id}, %{job_id: job_id} = state) do
+    {:noreply, update_state(state, socket, seq, partial)}
+  end
+
+  def handle_cast({:aggregate, socket, seq, partial, job_id}, state) do
+    state = init_state
+    |> Dict.put(:job_id, job_id)
+    |> update_state(socket, seq, partial)
 
     {:noreply, state}
   end
 
-  def push(pid, socket, sequence_number, aggregate) do
-    GenServer.cast(pid, {:aggregate, socket, sequence_number, aggregate})
+  def push(pid, socket, sequence_number, partial, job_id) do
+    GenServer.cast(pid, {:aggregate, socket, sequence_number, partial, job_id})
   end
 end

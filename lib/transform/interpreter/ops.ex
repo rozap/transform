@@ -70,6 +70,13 @@ defmodule Transform.Interpreter.Ops do
     |> Map.put(to, value)
     {:ok, transformed}
   end
+
+  def drop({:ok, datum}, colname, _wat) do
+    transformed = datum
+    |> Map.delete(colname)
+
+    {:ok, transformed}
+  end
 end
 
 

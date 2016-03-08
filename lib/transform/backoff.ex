@@ -23,9 +23,17 @@ defmodule Transform.Backoff do
     try_for(func, maximum, 0, 50, tag)
   end
 
-  defp build_push_func(group_name, payload) do
+  defp members_for(group_name, true) do
+    :pg2.get_local_members(group_name)
+  end
+
+  defp members_for(group_name, false) do
+    :pg2.get_members(group_name)
+  end
+
+  defp build_push_func(group_name, payload, local_only) do
     fn ->
-      :pg2.get_members(group_name)
+      members_for(group_name, local_only)
       |> Enum.shuffle
       |> Enum.reduce_while(:no_worker, fn worker, acc ->
         case Workex.push_ack(worker, payload) do
@@ -41,8 +49,8 @@ defmodule Transform.Backoff do
     end
   end
 
-  def try_until(group_name, payload, timeout) do
-    push_func = build_push_func(group_name, payload)
+  def try_until(group_name, payload, timeout, local_only \\ false) do
+    push_func = build_push_func(group_name, payload, local_only)
     case push_func.() do
       :found_worker -> :ok
       :no_worker -> try_for(push_func, 10_000, "Push to #{group_name}")

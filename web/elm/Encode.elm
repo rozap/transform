@@ -27,6 +27,11 @@ stepsToNestedFuncs script =
             ([expr] ++ List.map atomToNestedFuncs args)
             resultCol
 
+        DropColumn colName ->
+          FunAppNF
+            "drop"
+            ([expr] ++ (List.map atomToNestedFuncs [SourceColumn colName]))
+            colName
         _ ->
           Debug.crash "TODO"
     )

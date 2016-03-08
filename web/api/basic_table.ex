@@ -20,6 +20,7 @@ defmodule Transform.Api.BasicTable do
     Stream.resource(
       fn -> read_body(conn, read_length: 1000) end,
       fn
+        {:error, _}        -> {:halt, conn}
         {:done, conn}      -> {:halt, conn}
         {:ok, bin, conn}   -> {[bin], {:done, conn}}
         {:more, bin, conn} -> {[bin], read_body(conn, read_length: 1000)}

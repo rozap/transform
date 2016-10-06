@@ -4,7 +4,7 @@ defmodule Transform.Mixfile do
   def project do
     [app: :transform,
      version: "0.0.13",
-     elixir: "~> 1.2",
+     elixir: "~> 1.3",
      elixirc_paths: elixirc_paths(Mix.env),
      compilers: [:phoenix, :gettext] ++ Mix.compilers,
      build_embedded: Mix.env == :prod,
@@ -59,7 +59,7 @@ defmodule Transform.Mixfile do
      {:poolboy, "~> 1.5"},
      {:calendar, "~> 0.12.4"},
      {:erlzk, "~> 0.6.1"},
-     {:erlcloud, git: "https://github.com/erlcloud/erlcloud", tag: "0.13.0"},
+     {:erlcloud, git: "https://github.com/erlcloud/erlcloud", tag: "0.13.8"},
      {:spacesaving, "~> 0.0.2"},
      {:statistics, "~> 0.4.0"},
      {:exrm, "~> 1.0.2"}

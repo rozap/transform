@@ -1,4 +1,4 @@
-module Model where
+module Model exposing (..)
 
 import Dict exposing (Dict)
 
@@ -39,7 +39,7 @@ type Expr
 
 
 type Atom
-  = SourceColumn ColumnName
+  = ColRef ColumnName
   | StringLit String
   | NumberLit Int
   | DoubleLit Float
@@ -112,26 +112,22 @@ functions =
 
 initialMapping : List ColumnName -> TypedSchemaMapping
 initialMapping columns =
-  columns |> List.map (\name -> (name, Atom (SourceColumn name), SoqlText))
+  columns |> List.map (\name -> (name, Atom (ColRef name), SoqlText))
 
 
-scriptToMapping : TransformScript -> List ColumnName -> (List (TypedSchemaMapping, Maybe InvalidStepError), TypedSchemaMapping)
-scriptToMapping script sourceColumns =
-  let
-    firstMapping =
-      sourceColumns |> List.map (\name -> (name, Atom (SourceColumn name), SoqlText))
-  in
-    List.foldl
-      (\step (increments, mapping) ->
-        case applyStep step mapping of
-          Ok newMapping ->
-            (increments ++ [(mapping, Nothing)], newMapping)
+scriptToMapping : List ColumnName -> TransformScript -> (List (TypedSchemaMapping, Maybe InvalidStepError), TypedSchemaMapping)
+scriptToMapping sourceColumns script =
+  List.foldl
+    (\step (increments, mapping) ->
+      case applyStep step mapping of
+        Ok newMapping ->
+          (increments ++ [(mapping, Nothing)], newMapping)
 
-          Err err ->
-            (increments ++ [(mapping, Just err)], mapping) -- just let old mapping keep going...
-      )
-      ([], firstMapping)
-      script
+        Err err ->
+          (increments ++ [(mapping, Just err)], mapping) -- just let old mapping keep going...
+    )
+    ([], initialMapping sourceColumns)
+    script
 
 
 applyStep : Step -> TypedSchemaMapping -> Result InvalidStepError TypedSchemaMapping
@@ -216,11 +212,13 @@ exprType typedMapping expr =
 
     Atom atom ->
       case atom of
-        SourceColumn colName ->
-          if colExists colName typedMapping then
-            Ok SoqlText
-          else
-            Err (NonexistentColumn colName)
+        ColRef colName ->
+          case findCol colName typedMapping of
+            Just (_, _, ty) ->
+              Ok ty
+            
+            Nothing ->
+              Err (NonexistentColumn colName)
 
         StringLit _ ->
           Ok SoqlText

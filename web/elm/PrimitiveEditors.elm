@@ -1,31 +1,29 @@
-module PrimitiveEditors where
+module PrimitiveEditors exposing (..)
 
 import Html exposing (..)
 import Html.Events exposing (..)
 import Html.Attributes exposing (..)
+import Html.App
 import Json.Decode as JsDec
 import String
 
-import StartApp.Simple as StartApp
 
-
-bool : Signal.Address Bool -> Bool -> Html
-bool addr currentValue =
+bool : Bool -> Html Bool
+bool currentValue =
   input
     [ type' "checkbox"
     , on
         "change"
         (JsDec.at ["target", "checked"] JsDec.bool)
-        (Signal.message addr)
     , checked currentValue
     ]
     [ text (toString currentValue) ]
 
 
-string : Signal.Address String -> (List Attribute) -> String -> Html
-string addr attributes currentValue =
+string : (List (Attribute String)) -> String -> Html String
+string attributes currentValue =
   input
-    ( [ on "input" (targetValue JsDec.string) (Signal.message addr)
+    ( [ on "input" (targetValue JsDec.string)
       , value currentValue
       ]
     ++ attributes
@@ -33,13 +31,12 @@ string addr attributes currentValue =
     []
 
 
-int : Signal.Address Int -> Int -> Html
-int addr currentValue =
+int : Int -> Html Int
+int currentValue =
   input
     [ on
         "input"
         (targetValue (JsDec.customDecoder JsDec.string String.toInt))
-        (Signal.message addr)
     , type' "number"
     , step "1"
     -- size has no effect http://stackoverflow.com/questions/22709792/html-input-type-number-wont-resize
@@ -54,15 +51,14 @@ targetValue decoder =
 
 
 -- TODO: if curVal is not in options, show it anyway?
-selector : Signal.Address String -> List String -> String -> Html
-selector addr options curVal =
+selector : List String -> String -> Html String
+selector options curVal =
   select
     [ on
         "change"
         (JsDec.at
           ["target", "value"]
           JsDec.string)
-        (Signal.message addr)
     ]
     (""::options |> List.map (\opt ->
       option
@@ -86,36 +82,36 @@ type Action
   | EditInt Int
 
 
-view : Signal.Address Action -> Model -> Html
-view addr model =
-  div
-    []
-    [ p [] [bool (Signal.forwardTo addr EditBool) model.b]
-    , p [] [string (Signal.forwardTo addr EditString) [size 3] model.str]
-    , p [] [int (Signal.forwardTo addr EditInt) model.i]
-    ]
+-- view : Model -> Html Action
+-- view addr model =
+--   div
+--     []
+--     [ p [] [bool (Html.App.map addr EditBool) model.b]
+--     , p [] [string (Html.App.map addr EditString) [size 3] model.str]
+--     , p [] [int (Html.App.map addr EditInt) model.i]
+--     ]
 
 
-update : Action -> Model -> Model
-update action model =
-  case action of
-    EditString str ->
-      { model | str = str }
+-- update : Action -> Model -> Model
+-- update action model =
+--   case action of
+--     EditString str ->
+--       { model | str = str }
 
-    EditBool b ->
-      { model | b = b }
+--     EditBool b ->
+--       { model | b = b }
 
-    EditInt i ->
-      { model | i = i }
+--     EditInt i ->
+--       { model | i = i }
 
 
-main =
-  StartApp.start
-    { model =
-        { i = 0
-        , str = ""
-        , b = True
-        }
-    , view = view
-    , update = update
-    }
+-- main =
+--   Html.App.beginnerProgram
+--     { model =
+--         { i = 0
+--         , str = ""
+--         , b = True
+--         }
+--     , view = view
+--     , update = update
+--     }

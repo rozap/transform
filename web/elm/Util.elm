@@ -1,4 +1,4 @@
-module Util where
+module Util exposing (..)
 
 insertAt : a -> Int -> List a -> Maybe (List a)
 insertAt item idx list =

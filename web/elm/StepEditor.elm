@@ -1,10 +1,11 @@
-module StepEditor where
+module StepEditor exposing (..)
 
 import Dict
 
 import Html exposing (..)
 import Html.Events exposing (..)
 import Html.Attributes exposing (..)
+import Html.App as App
 
 import Model exposing (..)
 import Util exposing (..)
@@ -113,68 +114,75 @@ update action model =
           Debug.crash "unexpected action"
 
 
-view : Signal.Address Action -> TypedSchemaMapping -> Model -> Html
-view addr typedMapping model =
+view : TypedSchemaMapping -> Model -> Html Action
+view typedMapping model =
   case model of
     DropColumn columnName ->
       span []
         [ text "Drop column "
-        , PrimitiveEditors.selector
-            (Signal.forwardTo addr (DropColumnAction << UpdateDropColumnName))
-            (columnNames typedMapping)
-            columnName
+        , App.map  
+            (DropColumnAction << UpdateDropColumnName)
+            (PrimitiveEditors.selector
+              (columnNames typedMapping)
+              columnName)
         ]
 
     RenameColumn fromName toName ->
       span []
         [ text "Rename column "
-        , PrimitiveEditors.selector
-            (Signal.forwardTo addr (RenameColumnAction << UpdateFromColumnName))
-            (columnNames typedMapping)
-            fromName
+        , App.map 
+            (RenameColumnAction << UpdateFromColumnName)
+            (PrimitiveEditors.selector
+              (columnNames typedMapping)
+              fromName)
         , text " to "
-        , PrimitiveEditors.string
-            (Signal.forwardTo addr (RenameColumnAction << UpdateToColumnName))
-            [size 20]
-            toName
+        , App.map
+            (RenameColumnAction << UpdateToColumnName)
+            (PrimitiveEditors.string
+              [size 20]
+              toName)
         ]
 
     MoveColumnToPosition colName idx ->
       span []
         [ text "Move column "
-        , PrimitiveEditors.selector
-            (Signal.forwardTo addr (MoveColumnToPositionAction << UpdateColumnToMove))
-            (columnNames typedMapping)
-            colName
+        , App.map
+            (MoveColumnToPositionAction << UpdateColumnToMove)
+            (PrimitiveEditors.selector
+              (columnNames typedMapping)
+              colName)
         , text " to index "
-        , PrimitiveEditors.int
-            (Signal.forwardTo addr (MoveColumnToPositionAction << UpdateMoveToIndex))
-            idx
+        , App.map
+            (MoveColumnToPositionAction << UpdateMoveToIndex)
+            (PrimitiveEditors.int idx)
         ]
 
     ApplyFunction resultColName funcName args ->
       span []
         [ text "Add column "
-        , PrimitiveEditors.string
-            (Signal.forwardTo addr (ApplyFunctionAction << UpdateResultColumnName))
-            [size 20]
-            resultColName
+        , App.map
+            (ApplyFunctionAction << UpdateResultColumnName)
+            (PrimitiveEditors.string
+              [size 20]
+              resultColName)
         , text " = "
-        , PrimitiveEditors.selector
-            (Signal.forwardTo addr (ApplyFunctionAction << UpdateFuncName))
-            (Model.functions |> Dict.keys)
-            funcName
+        , App.map
+            (ApplyFunctionAction << UpdateFuncName)
+            (PrimitiveEditors.selector
+              (Model.functions |> Dict.keys)
+              funcName)
         , text "("
         , span
             []
             (args
               |> List.indexedMap (\idx atom ->
                 span []
-                  [ atomEditor
-                      (Signal.forwardTo addr (ApplyFunctionAction << UpdateArgAt idx))
-                      typedMapping
-                      atom
-                  , a [ href "#", onClick addr (ApplyFunctionAction (RemoveArgAt idx)) ]
+                  [ App.map
+                      (ApplyFunctionAction << UpdateArgAt idx)
+                      (atomEditor
+                        typedMapping
+                        atom)
+                  , a [ href "#", onClick (ApplyFunctionAction (RemoveArgAt idx)) ]
                       [ text "X" ]
                   ]
               )
@@ -183,7 +191,6 @@ view addr typedMapping model =
         , text " "
         , a [ href "#"
             , onClick
-                addr
                 (ApplyFunctionAction <|
                   InsertArgAt (List.length args) (StringLit ""))
             ]
@@ -192,45 +199,45 @@ view addr typedMapping model =
         ]
 
 
-atomEditor : Signal.Address Atom -> TypedSchemaMapping -> Atom -> Html
-atomEditor addr typedMapping model =
+atomEditor : TypedSchemaMapping -> Atom -> Html Atom
+atomEditor typedMapping model =
   let
     firstCol =
       (columnNames typedMapping) |> List.head |> getMaybe "no columns"
 
     switchToCol =
-      a [ href "#", onClick addr (SourceColumn firstCol) ]
+      a [ href "#", onClick (ColRef firstCol) ]
         [ text "const" ]
 
     switchToLit =
-      a [ href "#", onClick addr (StringLit "") ]
+      a [ href "#", onClick (StringLit "") ]
         [ text "col" ]
   in
     case model of
-      SourceColumn columnName ->
+      ColRef columnName ->
         span []
           [ switchToLit
-          , PrimitiveEditors.selector
-              (Signal.forwardTo addr SourceColumn)
-              (columnNames typedMapping)
-              columnName
+          , App.map
+              ColRef
+              (PrimitiveEditors.selector
+                (columnNames typedMapping)
+                columnName)
           ]
 
       StringLit val ->
         span []
           [ switchToCol
-          , PrimitiveEditors.string
-              (Signal.forwardTo addr StringLit)
-              [size 5]
-              val
+          , App.map
+              StringLit
+              (PrimitiveEditors.string [size 5] val)
           ]
 
       NumberLit val ->
         span []
           [ switchToCol
-          , PrimitiveEditors.int
-              (Signal.forwardTo addr NumberLit)
-              val
+          , App.map
+              NumberLit
+              (PrimitiveEditors.int val)
           ]
 
       x ->

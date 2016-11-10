@@ -169,8 +169,12 @@ applyStep step typedMapping =
 
     ApplyFunction newColName funcName args ->
       let
+        resolvedArgs =
+          args
+          |> List.map (resolve typedMapping << Atom)
+
         newExpr =
-          FunApp funcName (List.map Atom args)
+          FunApp funcName resolvedArgs
       in
         case exprType typedMapping newExpr of
           Ok ty ->
@@ -181,6 +185,21 @@ applyStep step typedMapping =
 
           Err err ->
             Err (ExprTypeError err)
+
+
+resolve : TypedSchemaMapping -> Expr -> Expr
+resolve typedMapping expr =
+  case expr of
+    FunApp name args ->
+      FunApp name (args |> List.map (resolve typedMapping))
+    
+    Atom (ColRef name) ->
+      findCol name typedMapping
+      |> Util.getMaybe ("couldn't find with name " ++ name)
+      |> (\(_, expr, _) -> expr)
+    
+    _ ->
+      expr
 
 
 exprType : TypedSchemaMapping -> Expr -> Result TypeError SoqlType

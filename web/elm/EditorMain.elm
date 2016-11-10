@@ -22,8 +22,13 @@ type Msg
 
 
 originalFileColumns =
-  [ "block", "date", "arrest", "latitude"
-  , "longitude", "description"
+  [ ("block", SoqlText)
+  , ("date", SoqlText)
+  , ("arrest", SoqlText)
+  , ("latitude", SoqlText)
+  , ("longitude", SoqlText)
+  , ("description", SoqlText)
+  , ("officersInvolved", SoqlNumber)
   ]
 
 
@@ -35,15 +40,22 @@ view model =
       |> snd
   in
     div [style [("margin", "10px"), ("overflow", "scroll")]]
-      [ span []
-          [ strong [] [text "Source Columns: "]
-          , originalFileColumns |> String.join ", " |> text
-          ]
+      [ h1 [] [text "Source Table"]
+      , originalFileColumns
+        |> List.map (\(n, t) -> viewColNameAndType n t)
+        |> List.intersperse (text ", ")
+        |> span []
+      , h1 [] [text "Transform"]
       , App.map
           ScriptEditorMsg
           (TransformScriptEditor.view
             originalFileColumns
             model)
+      , p []
+          [ text "As SQL: "
+          , code [] [text (asSQL typedSchemaMapping "myTable")]
+          ]
+      , h1 [] [text "Output Table"]
       , table []
           [typedSchemaMapping
           |> List.map ((App.map (ScriptEditorMsg << TransformScriptEditor.AddStep)) << viewColumnHeader)
@@ -55,9 +67,7 @@ viewColumnHeader : (ColumnName, Expr, SoqlType) -> Html Step
 viewColumnHeader (name, expr, ty) =
   th
     [ style [("font-weight", "normal")] ]
-    [ span [ style [("font-weight", "bold")] ] [ text name ]
-    , text ": "
-    , span [ style [("font-style", "italic")] ] [text (toString ty)]
+    [ viewColNameAndType name ty
     , br [] []
     , span
         [ style [("font-weight", "normal")] ]
@@ -80,6 +90,65 @@ viewColumnHeader (name, expr, ty) =
         ]
         [ text (toString expr) ]
     ]
+
+
+viewColNameAndType : String -> SoqlType -> Html a
+viewColNameAndType name ty =
+  span []
+    [ span [ style [("font-weight", "bold")] ] [ text name ]
+    , text ": "
+    , span [ style [("font-style", "italic")] ] [text (toString ty)]
+    ]
+
+
+asSQL : TypedSchemaMapping -> String -> String
+asSQL typedMapping tableName =
+  let
+    colRefToSQL name =
+      if name |> String.any (\c -> c == ' ') then
+        "`" ++ name ++ "`"
+      else
+        name
+
+    exprToSQL expr =
+      case expr of
+        FunApp name args ->
+          name ++ "(" ++ (args |> List.map exprToSQL |> String.join ", ") ++ ")"
+        
+        Atom atom ->
+          case atom of
+            ColRef name ->
+              colRefToSQL name
+            
+            StringLit str ->
+              "'" ++ str ++ "'"
+            
+            NumberLit int ->
+              toString int
+            
+            DoubleLit float ->
+              toString float
+            
+            BoolLit bool ->
+              toString bool
+    
+    colExprToSQL name expr =
+      case (name, expr) of
+        -- cases with conditions sure would be nice
+        (givenName, Atom (ColRef referencedName)) ->
+          if givenName == referencedName then
+            givenName
+          else
+            (exprToSQL expr) ++ " AS " ++ (colRefToSQL name)
+        
+        _ ->
+          (exprToSQL expr) ++ " AS " ++ (colRefToSQL name)
+
+    colExprs =
+      typedMapping
+      |> List.map (\(name, expr, _) -> colExprToSQL name expr)
+  in
+    "SELECT " ++ (String.join ", " colExprs) ++ " FROM " ++ tableName
 
 
 update : Msg -> Model -> Model

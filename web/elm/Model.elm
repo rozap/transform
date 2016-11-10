@@ -6,12 +6,6 @@ import List.Extra
 
 import Util
 
--- never want to denormalize shit... but sometimes you might as well...
--- you want the types when you're checking
-
--- you can have partial success... all of the columns might be right except
--- one. But it should probably be more like `Result StepError TypedSchemaMapping`
-
 -- basic types
 
 type Step
@@ -74,6 +68,10 @@ type SoqlType
   | SoqlLine
 
 
+type alias Schema =
+  List (ColumnName, SoqlType)
+
+
 type alias TypedSchemaMapping =
   List (ColumnName, Expr, SoqlType)
 
@@ -96,6 +94,11 @@ functions =
       , returnType = SoqlNumber
       }
     )
+  , ( "add"
+    , { arguments = NormalArgs [("a", SoqlNumber), ("b", SoqlNumber)]
+      , returnType = SoqlNumber
+      }
+    )
   , ( "parseFloatingTimestamp"
     , { arguments =
           NormalArgs [("input", SoqlText), ("format", SoqlText)]
@@ -110,12 +113,13 @@ functions =
 -- type check
 
 
-initialMapping : List ColumnName -> TypedSchemaMapping
+initialMapping : Schema -> TypedSchemaMapping
 initialMapping columns =
-  columns |> List.map (\name -> (name, Atom (ColRef name), SoqlText))
+  columns
+  |> List.map (\(name, ty) -> (name, Atom (ColRef name), ty))
 
 
-scriptToMapping : List ColumnName -> TransformScript -> (List (TypedSchemaMapping, Maybe InvalidStepError), TypedSchemaMapping)
+scriptToMapping : Schema -> TransformScript -> (List (TypedSchemaMapping, Maybe InvalidStepError), TypedSchemaMapping)
 scriptToMapping sourceColumns script =
   List.foldl
     (\step (increments, mapping) ->

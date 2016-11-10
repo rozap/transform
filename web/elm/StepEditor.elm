@@ -220,7 +220,7 @@ atomEditor typedMapping model =
           , App.map
               ColRef
               (PrimitiveEditors.selector
-                (columnNames typedMapping)
+                (Debug.log "cns" (columnNames typedMapping))
                 columnName)
           ]
 

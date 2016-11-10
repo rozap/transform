@@ -35,7 +35,7 @@ update msg transformScript =
       Util.removeAt idx transformScript
 
 
-view : List ColumnName -> TransformScript -> Html Msg
+view : Schema -> TransformScript -> Html Msg
 view columnNames transformScript =
   let
     (increments, finalMapping) =
